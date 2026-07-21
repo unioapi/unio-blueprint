@@ -21,12 +21,12 @@ related:
 
 | 想了解的问题 | 权威位置 |
 | --- | --- |
-| 平台为何存在，为什么这样设计？ | [平台架构](docs/architecture/README.md) |
-| 所有产品共同遵守哪些标准？ | [平台规范](docs/specifications/README.md) |
-| 某个产品领域负责什么？ | [产品领域](docs/README.md#产品领域) |
-| 某项跨产品选择为何这样决定？ | [全局决策](docs/decisions/README.md) |
-| 整个生态接下来如何发展？ | [平台路线图](docs/roadmap/README.md) |
-| 新文档应该如何编写？ | [文档模板](docs/templates/README.md) |
+| 平台为何存在，为什么这样设计？ | [Architecture（平台架构）](docs/architecture/README.md) |
+| 所有产品共同遵守哪些标准？ | [Specifications（平台规范）](docs/specifications/README.md) |
+| 某个产品领域负责什么？ | [Product Domains（产品领域）](docs/products/README.md) |
+| 某项跨产品选择为何这样决定？ | [Decisions（全局决策）](docs/decisions/README.md) |
+| 整个生态接下来如何发展？ | [Roadmap（平台路线图）](docs/roadmap/README.md) |
+| 新文档应该如何编写？ | [Templates（文档模板）](docs/templates/README.md) |
 
 ## 唯一事实来源规则
 

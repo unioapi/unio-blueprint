@@ -1,5 +1,5 @@
 ---
-title: 平台架构
+title: Architecture（平台架构）
 description: 平台级设计目标、约束与依据的统一入口。
 status: active
 owner: 架构团队
@@ -10,7 +10,7 @@ related:
   - ../specifications/README.md
 ---
 
-# 平台架构
+# Architecture（平台架构）
 
 ## 目的
 
@@ -52,4 +52,3 @@ related:
 | [平台词汇表](glossary.md) | 共享术语分别代表什么？ |
 | [质量属性](quality.md) | 哪些质量要求约束整个平台？ |
 | [架构风险](risks.md) | 哪些风险需要持续管理？ |
-

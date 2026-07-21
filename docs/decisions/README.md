@@ -1,5 +1,5 @@
 ---
-title: 全局架构决策
+title: Decisions（全局决策）
 description: 影响多个 UnioAPI 产品领域的决策索引与维护规则。
 status: active
 owner: 架构团队
@@ -10,7 +10,7 @@ related:
   - ../templates/adr.md
 ---
 
-# 全局架构决策
+# Decisions（全局决策）
 
 ## 目的
 
@@ -50,4 +50,3 @@ related:
 ## 决策索引
 
 当前尚未记录全局架构决策。
-

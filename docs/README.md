@@ -7,6 +7,7 @@ last_updated: 2026-07-21
 related:
   - ../README.md
   - specifications/documentation.md
+  - products/README.md
 ---
 
 # 蓝图文档总览
@@ -38,24 +39,14 @@ related:
 - 某个仓库专用的安装、测试和发布命令。
 - 本蓝图其他位置已经维护的重复文档。
 
-## 平台级知识
+## 知识区域
 
-| 区域 | 负责内容 |
-| --- | --- |
-| [平台架构](architecture/README.md) | 平台目标、上下文、约束和设计依据 |
-| [平台规范](specifications/README.md) | 跨产品的建设与体验标准 |
-| [平台路线图](roadmap/README.md) | 跨产品的目标与推进顺序 |
-| [全局决策](decisions/README.md) | 影响整个平台的架构决策记录 |
-| [文档模板](templates/README.md) | 新文档可复用的统一结构 |
-| [共享资源](assets/README.md) | 具有明确所有权的共享视觉资源 |
-
-## 产品领域
-
-| 领域                                             | 范围            |
-| ---------------------------------------------- | ------------- |
-| [Website（官网）](website/README.md)               | 面向公众的官网产品知识   |
-| [Documentation Site（文档站）](docs-site/README.md) | 面向开发者发布的文档体验  |
-| [Console（用户控制台）](console/README.md)            | 面向客户的管理体验     |
-| [Admin（管理后台）](admin/README.md)                 | 面向内部人员的运营体验   |
-| [Gateway（网关）](gateway/README.md)               | API 流量与平台网关行为 |
-| [SDK（软件开发工具包）](sdk/README.md)                  | 开发者类库与集成体验    |
+| 区域                                                   | 负责内容                   |
+| ---------------------------------------------------- | ---------------------- |
+| [Architecture（平台架构）](architecture/README.md)       | 平台目标、上下文、约束和设计依据       |
+| [Specifications（平台规范）](specifications/README.md)   | 跨产品的建设与体验标准            |
+| [Product Domains（产品领域）](products/README.md)         | 各产品的方向、设计、质量要求与领域决策    |
+| [Roadmap（平台路线图）](roadmap/README.md)                | 跨产品的目标与推进顺序            |
+| [Decisions（全局决策）](decisions/README.md)              | 影响整个平台的架构决策记录          |
+| [Templates（文档模板）](templates/README.md)              | 新文档可复用的统一结构            |
+| [Assets（共享资源）](assets/README.md)                    | 具有明确所有权的共享视觉资源         |

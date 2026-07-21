@@ -1,5 +1,5 @@
 ---
-title: 文档模板
+title: Templates（文档模板）
 description: 用于保持蓝图文档一致性的可复用结构。
 status: active
 owner: 平台团队
@@ -9,7 +9,7 @@ related:
   - ../specifications/documentation.md
 ---
 
-# 文档模板
+# Templates（文档模板）
 
 ## 目的
 
@@ -58,4 +58,3 @@ related:
 3. 只删除确实不适用的可选章节。
 4. 保留所有必需 Front Matter 字段。
 5. 链接背景文档，不复制已有说明。
-

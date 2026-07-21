@@ -1,5 +1,5 @@
 ---
-title: 共享资源
+title: Assets（共享资源）
 description: UnioAPI 跨领域视觉资源的所有权与存放规则。
 status: active
 owner: 设计团队
@@ -10,7 +10,7 @@ related:
   - ../specifications/icons.md
 ---
 
-# 共享资源
+# Assets（共享资源）
 
 ## 目的
 
@@ -43,4 +43,3 @@ related:
 
 如果仅靠引用文档无法理解资源的所有权、授权、变体或用法，应增加配套 Markdown
 说明。通过链接引用资源，不要复制到多个领域。
-

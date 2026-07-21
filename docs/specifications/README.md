@@ -1,5 +1,5 @@
 ---
-title: 平台规范
+title: Specifications（平台规范）
 description: 适用于所有 UnioAPI 产品的强制性标准入口。
 status: active
 owner: 架构团队
@@ -10,7 +10,7 @@ related:
   - ../decisions/README.md
 ---
 
-# 平台规范
+# Specifications（平台规范）
 
 ## 目的
 
@@ -56,4 +56,3 @@ related:
 | [表单](forms.md) | 输入、校验、提交与错误行为 |
 | [日志](logging.md) | 结构化事件与诊断日志 |
 | [编码](coding.md) | 跨仓库工程基线 |
-

@@ -38,7 +38,25 @@ related:
 Admin（管理后台）、Gateway（网关）和 SDK（软件开发工具包）。`docs-site` 是
 Documentation Site 已确定的文件系统名称。
 
+所有产品领域统一存放在 `docs/products/`。该目录只作为产品领域的分组层，不代表
+新的产品，也不改变各领域自身的文档所有权。
+
+## 平台与支持区域名称
+
+平台与支持区域采用“英文名称在前、中文名称在后”的统一展示方式：
+
+| 标准名称 | 目录 |
+| --- | --- |
+| Architecture（平台架构） | `architecture/` |
+| Specifications（平台规范） | `specifications/` |
+| Roadmap（平台路线图） | `roadmap/` |
+| Decisions（全局决策） | `decisions/` |
+| Templates（文档模板） | `templates/` |
+| Assets（共享资源） | `assets/` |
+
+作为区域名称使用时必须采用完整的中英文形式；在中文句子中描述一般概念时，
+可以只写“架构”“规范”“路线图”“决策”“模板”或“资源”。
+
 ## 尚未确定的约定
 
 API 标识符、事件名、权限标识符和语言专用符号，需要在各自规范完成评审后再补充。
-

@@ -11,6 +11,7 @@ from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / "docs"
+PRODUCTS = DOCS / "products"
 EXCLUDED_PARTS = {".git", ".claudian", ".obsidian"}
 REQUIRED_FIELDS = {
     "title",
@@ -38,12 +39,7 @@ README_SECTIONS = (
 TOP_LEVEL_DOC_DIRECTORIES = {
     "architecture",
     "specifications",
-    "website",
-    "docs-site",
-    "console",
-    "admin",
-    "gateway",
-    "sdk",
+    "products",
     "roadmap",
     "decisions",
     "templates",
@@ -207,13 +203,13 @@ def validate_directories(errors: list[str]) -> None:
                 errors.append(f"{display(readme)}：缺少规定章节 '{heading}'")
 
     for domain in PRODUCT_DOMAINS:
-        domain_root = DOCS / domain
+        domain_root = PRODUCTS / domain
         actual_paths = {
             path.relative_to(domain_root).as_posix()
             for path in domain_root.rglob("*.md")
         }
         for missing in sorted(DOMAIN_PATHS - actual_paths):
-            errors.append(f"docs/{domain}/{missing}：缺少规定的领域文档")
+            errors.append(f"docs/products/{domain}/{missing}：缺少规定的领域文档")
 
 
 def main() -> int:
