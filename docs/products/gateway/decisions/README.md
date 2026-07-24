@@ -3,7 +3,7 @@ title: Gateway（网关）领域决策
 description: 只影响网关领域的架构决策索引。
 status: active
 owner: 网关团队
-last_updated: 2026-07-21
+last_updated: 2026-07-24
 related:
   - ../README.md
   - ../../../decisions/README.md
@@ -38,5 +38,7 @@ related:
 
 ## 决策索引
 
-当前尚未记录网关领域决策。新建时使用 [ADR 模板](../../../templates/adr.md)。
+- [ADR-0001：统一领域术语（协议 / 端点 / 上游源站）](adr-0001-domain-terminology.md)
+
+新建时使用 [ADR 模板](../../../templates/adr.md)。
 

@@ -3,7 +3,7 @@ title: Gateway（网关）领域
 description: UnioAPI 网关产品知识的权威入口。
 status: active
 owner: 网关团队
-last_updated: 2026-07-21
+last_updated: 2026-07-24
 related:
   - ../README.md
   - ../../architecture/overview.md
@@ -45,6 +45,7 @@ API 流量处理、兼容性行为、路由职责、网关自有契约和领域�
 - [路线图](roadmap.md)
 - [词汇表](glossary.md)
 - [质量要求](quality.md)
+- [功能设计](features/README.md)
 - [领域决策](decisions/README.md)
 - [页面设计](pages/README.md)
 - [图示](diagrams/README.md)
