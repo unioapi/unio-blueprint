@@ -1,9 +1,9 @@
 ---
 title: Gateway（网关）路线图
-description: 网关领域结果导向规划的占位文档。
+description: 网关领域结果规划的占位文档。
 status: draft
 owner: 网关团队
-last_updated: 2026-07-21
+last_updated: 2026-07-26
 related:
   - README.md
   - overview.md
@@ -12,20 +12,10 @@ related:
 
 # Gateway（网关）路线图
 
-## 当前
+## 当前状态
 
-该阶段暂未批准网关目标。
-
-## 下一步
-
-该阶段暂未批准网关目标。
-
-## 未来
-
-该阶段暂未批准网关目标。
+当前未记录 Gateway 路线图事项。
 
 ## 规划规则
 
-每项目标应可衡量、有明确负责人、展示依赖，并链接相关设计或决策。
-跨领域顺序统一维护在[平台路线图](../../roadmap/README.md)。
-
+跨领域顺序维护在[平台路线图](../../roadmap/README.md)。

@@ -3,10 +3,11 @@ title: Website（官网）页面设计
 description: 官网页面与用户旅程的索引和所有权规则。
 status: active
 owner: 官网团队
-last_updated: 2026-07-24
+last_updated: 2026-07-26
 related:
   - ../README.md
   - ../overview.md
+  - home.md
   - ../../../templates/page-design.md
   - ../../../specifications/navigation.md
   - ../../docs-site/README.md
@@ -42,7 +43,7 @@ related:
 
 | 入口 | 类型 | 权威领域 | 页面设计状态 |
 | --- | --- | --- | --- |
-| Home（首页） | 官网自有页面 | Website（官网） | 内容待讨论，尚未建立页面设计文档 |
+| Home（首页） | 官网自有页面 | Website（官网） | [草稿已建立](home.md)，待 2026-07-27 讨论 |
 | Pricing（定价） | 官网自有页面 | Website（官网） | 暂时保留，订阅套餐确定后再完善 |
 | Docs（文档） | 跨产品入口 | [Documentation Site（文档站）](../../docs-site/README.md) | 不在本目录建立重复页面设计 |
 | Console（用户控制台） | 跨产品入口 | [Console（用户控制台）](../../console/README.md) | 不在本目录建立重复页面设计 |
@@ -52,8 +53,9 @@ related:
 
 ## 后续建档规则
 
-- Home（首页）和 Pricing（定价）的内容开始设计时，使用
-  [页面设计模板](../../../templates/page-design.md)分别建立权威页面文档。
+- Home（首页）当前设计维护在[Home 页面草稿](home.md)，批准前不具有强制性。
+- Pricing（定价）的内容开始设计时，使用
+  [页面设计模板](../../../templates/page-design.md)建立权威页面文档。
 - Docs（文档）和 Console（用户控制台）的产品设计必须维护在各自产品领域；本目录只记录
   官网如何提供入口。
 - 内容尚未进入讨论的页面不提前创建空白占位文档。

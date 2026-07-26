@@ -3,10 +3,10 @@ title: 蓝图维护脚本
 description: 仓库校验工具的入口与维护边界。
 status: active
 owner: 平台团队
-last_updated: 2026-07-21
+last_updated: 2026-07-26
 related:
-  - ../CONTRIBUTING.md
-  - ../docs/specifications/documentation.md
+  - ../../CONTRIBUTING.md
+  - ../specifications/documentation.md
 ---
 
 # 蓝图维护脚本

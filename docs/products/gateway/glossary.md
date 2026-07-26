@@ -1,29 +1,41 @@
 ---
 title: Gateway（网关）词汇表
-description: 网关领域专用术语的占位文档。
+description: 网关当前领域术语及其实现边界。
 status: active
 owner: 网关团队
-last_updated: 2026-07-24
+last_updated: 2026-07-26
 related:
   - README.md
+  - overview.md
   - ../../architecture/glossary.md
   - decisions/adr-0001-domain-terminology.md
+  - decisions/adr-0002-route-product-pricing.md
 ---
 
 # Gateway（网关）词汇表
 
 ## 领域术语
 
-| 术语                   | 定义                                                                                                               |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| 协议 Protocol          | API 格式族，决定请求/响应的 schema 家族。当前有 `openai` 与 `anthropic` 两种。一个协议涵盖多个端点。                                             |
-| 端点 Endpoint          | 网关对外暴露的一个 API 操作/路径，如 `/v1/chat/completions`、`/v1/responses`（OpenAI 协议）、`/v1/messages`（Anthropic 协议）。每个端点归属唯一协议。 |
-| 上游源站 Provider Origin | 一个上游供应商的根地址（`base_url`/host，如 `https://open.codex521.cc`）。它是熔断与流式首字延迟统计的**单故障域**；多条渠道可共享同一源站。                    |
-| 渠道 Channel           | 一次上游调用的凭据、定价与适配单元。声明所走协议、挂在某个上游源站上；支持哪些端点由 adapter 能力决定。                                                         |
-| 候选 Candidate         | 路由时「渠道 × 该渠道支持的上游模型」的一个可尝试项。                                                                                     |
+| 术语 | 当前定义 |
+| --- | --- |
+| User Account（用户账户） | 当前认证、余额和 API Key 的归属主体。 |
+| Client Application（客户端应用） | 使用 API Key 调用公开 API 的程序。 |
+| Project（项目） | 历史来源中的应用与用量归集概念；当前 Schema 和认证路径没有该身份层。 |
+| API Key | 客户端凭据；直接归属 User Account 并显式绑定一条 Route。 |
+| Protocol（协议） | API 格式族。当前 ingress 值为 `openai` 或 `anthropic`。 |
+| Endpoint（端点） | Gateway 公开的 API 操作或路径，每个 Endpoint 归属一个 Protocol。 |
+| Provider（服务商） | Provider Origin 与 Channel 的内部归属主体。 |
+| Provider Origin（上游源站） | 上游 Base URL、状态 revision、围栏和公共 breaker 故障域。 |
+| Channel（渠道） | 上游凭据、Protocol、Adapter、模型映射、成本和运行控制事实单元。 |
+| Candidate（候选） | Route 内一个 Channel 与其上游模型映射形成的可尝试项。 |
+| Route（线路） | API Key 绑定的客户定价与供给边界，保存模式和显式 Channel 池。 |
+| Model（模型） | 客户请求的模型标识，关联基准价格与模型能力声明。 |
+| Request（请求） | 生成或压缩调用进入持久生命周期后的端到端业务记录。 |
+| Attempt（尝试） | Request 对一个 Candidate 发起的一次真实上游 transport。 |
+| Usage（用量） | Gateway 保存并用于计费、限额或审计的计量事实。 |
+| Price Snapshot（价格快照） | Request 锁定的客户 token 价格向量、Route 倍率和公式版本。 |
+| Cost Snapshot（成本快照） | Attempt 锁定的 Channel token 成本向量、倍率和来源事实。 |
+| Capability（能力） | 模型目录声明或 Adapter operation capability；两者分别存储并由不同路径读取。 |
 
-## 维护规则
-
-这里只定义网关独有术语。共享术语属于[平台词汇表](../../architecture/glossary.md)，
-应通过链接引用，不得重复定义。
-
+`ProviderEndpoint` 是 Gateway 来源文档和部分旧代码命名；Blueprint 当前术语为 `Provider Origin`，见
+[ADR-0001](decisions/adr-0001-domain-terminology.md)。

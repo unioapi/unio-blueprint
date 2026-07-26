@@ -3,7 +3,7 @@ title: Admin（管理后台）领域决策
 description: 只影响管理后台领域的架构决策索引。
 status: active
 owner: 管理后台团队
-last_updated: 2026-07-21
+last_updated: 2026-07-25
 related:
   - ../README.md
   - ../../../decisions/README.md
@@ -38,5 +38,9 @@ related:
 
 ## 决策索引
 
-当前尚未记录管理后台领域决策。新建时使用 [ADR 模板](../../../templates/adr.md)。
+| ADR | 状态 | 主题 |
+| --- | --- | --- |
+| [ADR-0001](adr-0001-objective-operational-facts.md) | proposed | 经营驾驶舱与运行页面使用客观事实。 |
+| [ADR-0002](adr-0002-provider-origin-management.md) | proposed | Provider Origin、凭据检测与供给管理。 |
 
+新建时使用 [ADR 模板](../../../templates/adr.md)。

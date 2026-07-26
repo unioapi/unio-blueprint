@@ -9,7 +9,7 @@ from pathlib import Path
 from urllib.parse import unquote
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 DOCS = ROOT / "docs"
 PRODUCTS = DOCS / "products"
 EXCLUDED_PARTS = {".git", ".claudian", ".obsidian"}

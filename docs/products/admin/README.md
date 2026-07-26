@@ -3,7 +3,7 @@ title: Admin（管理后台）领域
 description: UnioAPI 管理后台产品知识的权威入口。
 status: active
 owner: 管理后台团队
-last_updated: 2026-07-21
+last_updated: 2026-07-25
 related:
   - ../README.md
   - ../../architecture/overview.md
@@ -35,7 +35,7 @@ related:
 
 ## 不应存放的内容
 
-- 由 Console 负责的客户管理流程。
+- 由 Console 负责的客户自助管理流程；Admin 可以承载内部客服与客户运营动作。
 - 共享界面规范或平台架构。
 - 源代码、框架配置、部署步骤或运营数据导出。
 
@@ -46,7 +46,7 @@ related:
 - [词汇表](glossary.md)
 - [质量要求](quality.md)
 - [领域决策](decisions/README.md)
+- [功能设计](features/README.md)
 - [页面设计](pages/README.md)
 - [图示](diagrams/README.md)
 - [资源](assets/README.md)
-

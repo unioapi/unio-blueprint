@@ -3,7 +3,7 @@ title: Admin（管理后台）页面设计
 description: 管理后台页面与操作人员旅程的索引和所有权规则。
 status: active
 owner: 管理后台团队
-last_updated: 2026-07-21
+last_updated: 2026-07-25
 related:
   - ../README.md
   - ../../../templates/page-design.md
@@ -35,3 +35,7 @@ related:
 
 - 组件源码、框架路由、共享 UI 规范或其他产品领域负责的页面。
 
+## 目录
+
+- [Provider Origin 与 Channel 管理](provider-origin-channel-management.md)
+- [经营驾驶舱](operations-dashboard.md)

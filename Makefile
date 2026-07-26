@@ -1,5 +1,4 @@
 .PHONY: validate
 
 validate:
-	python3 scripts/validate-docs.py
-
+	python3 docs/scripts/validate-docs.py

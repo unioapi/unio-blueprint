@@ -3,7 +3,7 @@ title: Gateway（网关）领域决策
 description: 只影响网关领域的架构决策索引。
 status: active
 owner: 网关团队
-last_updated: 2026-07-24
+last_updated: 2026-07-26
 related:
   - ../README.md
   - ../../../decisions/README.md
@@ -38,7 +38,18 @@ related:
 
 ## 决策索引
 
-- [ADR-0001：统一领域术语（协议 / 端点 / 上游源站）](adr-0001-domain-terminology.md)
+| ADR | 状态 | 主题 |
+| --- | --- | --- |
+| [ADR-0001](adr-0001-domain-terminology.md) | active | 统一协议、端点与 Provider Origin 术语。 |
+| [ADR-0002](adr-0002-route-product-pricing.md) | active | API Key 绑定的 Route 供给、调度与客户定价边界。 |
+| [ADR-0003](adr-0003-billing-settlement.md) | active | 预付授权、token 结算、补扣/核销、快照与恢复边界。 |
+| [ADR-0004](adr-0004-model-capabilities.md) | active | 模型能力声明与运行时可执行能力分离。 |
+| [ADR-0005](adr-0005-request-identity.md) | active | HTTP correlation ID、持久业务请求 ID 与数据库关系键分离。 |
+| [ADR-0006](adr-0006-protocol-adapter-boundary.md) | active | 公开协议、Adapter registry、原生与桥接路径的当前边界。 |
+| [ADR-0007](adr-0007-atomic-admission-control.md) | active | 请求和候选两层原子准入及当前收口限制。 |
+| [ADR-0008](adr-0008-runtime-state-fencing.md) | active | Provider Origin、Channel、control 与 runtime epoch 围栏。 |
+| [ADR-0009](adr-0009-objective-balanced-routing.md) | active | Balanced 候选过滤、权重、排序与准入时序。 |
+| [ADR-0010](adr-0010-upstream-breaker-attribution.md) | active | 上游结果归因、breaker 与恢复状态机。 |
+| [ADR-0011](adr-0011-runtime-deployment-boundaries.md) | active | 当前进程、依赖、健康探针与运行控制边界。 |
 
 新建时使用 [ADR 模板](../../../templates/adr.md)。
-

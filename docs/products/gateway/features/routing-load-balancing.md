@@ -1,199 +1,146 @@
 ---
 title: 路由负载均衡（balanced 权重调度）
-description: 网关在多候选渠道之间按客观运行态信号加权分流的调度逻辑与依据。
+description: Gateway 当前 Balanced 候选评分、排序、sticky 与逐候选准入行为。
 status: active
 owner: 网关团队
-last_updated: 2026-07-24
+last_updated: 2026-07-26
 related:
   - ../overview.md
   - ../glossary.md
-  - ../decisions/README.md
   - ../decisions/adr-0001-domain-terminology.md
-  - ../../../architecture/principles.md
+  - ../decisions/adr-0009-objective-balanced-routing.md
+  - ../decisions/adr-0010-upstream-breaker-attribution.md
+  - admission-control.md
 ---
 
 # 路由负载均衡（balanced 权重调度）
 
-## 摘要
-
-同一个逻辑模型在一条线路（route）下通常有多个可用渠道（channel）。`balanced`
-模式的线路需要在这些候选之间分配流量，既要优先"又空、又快、又便宜"的渠道，又要
-保留冗余以便故障时回退。本设计定义候选的**权重公式**与**加权随机调度**方式：权重完全
-由实时客观信号（容量、错误率、流式首字延迟、成本）算出，不使用任何人为设定的"健康
-评分"。
-
-## 背景
-
-早期方案用人为阈值给渠道打"健康分"来排序，主观、难解释，且各网关实例各算各的。
-本设计以客观、可复算、多实例一致的信号取代健康分：
-
-- **客观**：每个因子都来自可观测的运行态数据，任何人都能用同一公式复算出面板上的权重。
-- **一致**：容量、熔断、限流等运行态集中在共享存储，多个网关实例看到同一份事实。
-- **安全**：运行态不可信时一律拒绝（fail-closed），不退化为"无控制放行"。
-
-实现细节（数据结构、存储脚本、代码位置）属网关代码仓库；本文只约束其行为与取舍。
-平台层面的客观化、fail-closed 原则见[平台设计原则](../../../architecture/principles.md)。
-
 ## 适用范围
 
-- **适用**：`balanced` 模式线路在多个候选渠道之间的流量分配与 fallback 排序。
-- **部分适用**：`fixed` 模式不加权（保持固定顺序）；会话粘性（sticky）命中时置顶，见"边界规则"。
-- **不适用**：准入限流（RPM/TPM/RPD）、并发闸门、熔断状态机本身——它们是本调度之前的
-  **硬门禁**，只决定候选"进不进池"，不参与权重计算。
+本文记录 `balanced` Route 在显式 Channel 池内形成候选顺序的当前行为。`fixed` Route 只接受恰好一个
+Channel 的候选池，不执行多候选加权排序。候选资源由 transport 前的 `AttemptPermit` 取得，不由排序快照
+预占。
 
-## 目标
+## 候选输入
 
-- 用一个可复算的权重公式，在可用候选之间按"容量 + 质量 + 成本"分流。
-- 让分流结果可解释、可观测、可热调，且多网关实例一致。
-- 保留 fallback 冗余，不把流量全压到单一候选。
+Router 按 API Key 绑定的 Route 与请求模型生成同协议候选，并在进入 lifecycle 前处理以下事实：
 
-## 非目标
+- Provider、Provider Origin、Channel、Model 与 Channel-Model 状态；
+- Channel protocol、Adapter key、上游模型映射和 credential validity；
+- 客户售价、Channel 成本、币种与 pricing unit；
+- 七个归一化计价分项中的 Provider 成本与客户售价比。
 
-- 不做主观健康评分或人工优先级。
-- 不用负载均衡"救"故障渠道——故障隔离由熔断与上游源站围栏负责。
-- 不在本层做限流/并发/权限判定（那是前置硬门禁）。
+任一计价分项为正成本和零售价，或成本高于售价时，该候选不进入计划。通过检查的候选冻结各分项比值中的
+最大值为 `CostRatio`。
 
-## 核心概念
+## 当前调度流程
 
-- **候选（candidate）**：一个"渠道 × 该渠道支持的上游模型"的可尝试项。
-- **上游源站（Provider Origin）**：候选所属的上游根地址（`base_url`/host），是熔断与首字延迟统计的单故障域；熔断与首字延迟按上游源站/渠道维度统计。
-- **运行态快照**：一次性读取全部候选的容量、熔断、限流冷却、权限、版本等事实，
-  据此做硬门禁与打分。
-
-术语定义见[网关词汇表](../glossary.md)。
-
-## 调度流程
-
-1. **候选生成**：按线路与请求模型选出同协议候选（渠道 × 模型）。
-2. **能力过滤**：摘除不具备本次操作所需适配能力的候选。
-3. **硬门禁（一次运行态快照）**：摘除任一不满足项的候选——上游源站/渠道状态被围栏禁用、
-   熔断处于 open、命中限流冷却、渠道-模型权限被暂停、运行态版本不一致等。硬门禁不打分，
-   直接决定"进不进池"。
-4. **打分**：对通过硬门禁的候选计算**最终权重**（见下）。
-5. **排序**：
-   - `balanced`：按最终权重做**加权随机（weighted random without replacement）**，
-     排出首选与后续 fallback 顺序；
-   - `fixed`：不加权，保持既定顺序；
-   - 命中会话粘性（sticky）：绑定渠道置顶，其余按上述顺序作 fallback。
-6. **half-open 分流**：处于 half-open 探测态的候选不参与加权随机，只进入独立探测通道。
-7. **执行与回退**：按排定顺序逐个尝试，失败按可重试性回退到下一个候选。
+1. Adapter registry 按 ingress protocol 与本次 operation capability 过滤候选。
+2. `SnapshotMany` 在同一次 Redis Lua 调用中核验 integrity、control revision 和候选 revision，并读取各候选的
+   Origin/Channel breaker、429 cooldown、permission pause、并发、RPM、RPD、TPM、错误窗口、Channel TTFT
+   和当前 routing-balance control。
+3. runtime-sync、pending 或候选 revision/config stale 使整批快照返回错误。Origin disabled、cooldown、
+   permission pause、breaker open 或 half-open busy 等候选状态只排除对应候选。
+4. 对进入计划的候选逐一计算权重。`SnapshotMany` 是只读操作，不取得候选并发、RPM、RPD 或 TPM。
+5. 普通 closed 候选按权重加权随机且不放回排序。half-open 候选不参加普通随机，并按原顺序追加。
+6. sticky 在上述排序后，把仍存在于计划中的绑定 Channel 移到首位，其他候选保持相对顺序。
+7. 执行器按冻结顺序逐个候选调用 `AcquireAttempt`。每个真实 transport 使用新的 permit ID；denied 候选不创建
+   attempt 或 transport。Go/Store 错误或 `breaker_store_unavailable` 终止执行，其他 denied reason 可继续
+   后续候选。
 
 ## 权重公式
 
+```text
+并发剩余率 = 1 - 并发已用 / 并发上限
+TPM 剩余率 = 1 - TPM 已用 / TPM 上限
+容量分 = min(并发剩余率, TPM 剩余率)
+
+延迟惩罚 = TTFT_EWMA / (TTFT_EWMA + TTFT目标)
+运行因子 = max(最小路由因子,
+                 (1 - 错误率) * (1 - TTFT权重 * 延迟惩罚))
+
+成本因子 = max(最小路由因子,
+                 1 - 成本权重 * clamp(CostRatio, 0, 1))
+
+最终权重 = 容量分 * 运行因子 * 成本因子
 ```
-最终权重 = 容量分 × 质量因子 × 成本因子
 
-① 容量分   = min(并发剩余率, TPM剩余率)
-            剩余率 = 1 − 已用 / 上限      （上限=0 表示不限 ⇒ 该维度记 1）
+计算规则如下：
 
-② 延迟惩罚 = TTFT均值 ÷ (TTFT均值 + TTFT目标)      （无流式样本时 = 0）
-   质量因子 = max( 最小路由因子 , (1 − 错误率) × (1 − TTFT权重 × 延迟惩罚) )
+- 某容量维度的上限为 0 时，该维度剩余率为 1。
+- 容量已用值按不小于 0 处理，剩余率限制在 0 到 1。
+- Channel 没有 TTFT 样本时，延迟惩罚为 0。
+- 错误率和 `CostRatio` 在评分时限制在 0 到 1。
+- half-open 候选的运行因子与最终权重为 0。
+- `fixed` 模式记录容量与 `CostRatio` 事实，但成本因子为 1，不改变 SQL 候选顺序。
 
-③ 成本因子 = max( 最小路由因子 , 1 − 成本权重 × 成本占比 )
-```
+closed breaker 的 eligible 错误窗口已超过当前 breaker window 时，`SnapshotMany` 只在返回副本中把成功数、
+失败数和错误率按无样本处理，不修改 Redis state，也不清除 Channel TTFT。
 
-- **TTFT均值**：流式请求"首字延迟"的指数加权移动平均（EWMA），**只从流式请求采样**。
-- **成本占比**：该候选各计价分项中「渠道成本 ÷ 本线路客户售价」的**最大值**（越贵越接近 1）。
-- **最小路由因子**：质量因子与成本因子的下限，防止某因子归零把候选彻底饿死
-  （熔断 / half-open 显式置 0 的情况除外）。
+## 全零容量
 
-## 因子详解
+此次参与评分的全部普通候选容量分都为 0 时，不执行加权随机。候选按并发与 TPM pressure 的组合值稳定升序
+排列，half-open 候选继续保序追加。零容量候选仍留在 fallback 计划中，transport 前由 `AcquireAttempt` 决定
+是否取得资源。
 
-### 容量分
+## TTFT
 
-谁的剩余容量多谁得分高。并发与 TPM 各算"剩余率 = 1 − 已用/上限"，取两者较小值；
-某维度"不限"（上限=0）则该维度记满分 1。它回答"这条线现在还接得下吗"。
+Channel 保存一套 stream-only TTFT EWMA：
 
-### 延迟惩罚（在质量因子内）
+- 起点是 Adapter 紧邻 `http.Client.Do` 前记录的 transport start；
+- 终点是协议层标记为 `FirstTokenEligible` 的首个应用层流事件；
+- 非流式调用不生成 TTFT 样本；
+- stream permit 的 `Finish` 在 Channel generation 与 revision 可应用时更新样本；
+- EWMA alpha 从 Finish 当时已提交的 `gateway.routing_balance` control 读取；
+- Provider Origin 不保存 TTFT。
 
-把"首字有多慢"归一到 0~1，以 **TTFT目标** 为参照点：
+请求列表和 Dashboard 的 `ttft_ms` 从请求开始到客户首帧；attempt 的 `upstream_ttft_ms` 从 transport start
+到 `FirstTokenEligible`。Channel EWMA 使用 attempt 口径，并额外受 permit Finish 与围栏结果约束。
 
-| 实际首字延迟（TTFT均值） | 延迟惩罚 | 说明 |
+## 运行设置
+
+`gateway.routing_balance` 当前字段与默认值为：
+
+| 字段 | 默认值 | 当前用途 |
 | --- | --- | --- |
-| 0（秒回） | 0.00 | 不罚 |
-| 等于目标 | 0.50 | 到参照线，罚一半 |
-| 明显大于目标 | 趋近 1.00 | 越慢罚越多，封顶为 1 |
+| `ttft_target_ms` | 2000 | 延迟惩罚分母中的目标值 |
+| `ttft_weight` | 0.35 | 延迟惩罚在运行因子中的系数 |
+| `cost_weight` | 0.5 | `CostRatio` 在成本因子中的系数 |
+| `minimum_routing_factor` | 0.05 | 运行因子和成本因子的下限 |
+| `ttft_ewma_alpha` | 0.2 | 后续 TTFT 样本的 EWMA alpha |
 
-延迟惩罚再通过 **TTFT权重** 打折质量因子：`1 − TTFT权重 × 延迟惩罚`。因此再慢也
-最多损失"TTFT权重"这么多（例如权重 0.35 时最多降 35%）。它只是"温柔地把流量往快的
-渠道引"，真正的故障由熔断处理。错误率同理进入质量因子：错误率越高，`(1 − 错误率)` 越小。
+当前解码器接受严格五字段 payload，也接受不含 `cost_weight` 的严格旧四字段 payload；旧形状被解释为
+`cost_weight=0`。提交新 control revision 后，后续快照使用新参数。热更新不清除 TTFT、breaker、错误窗口、
+限流、cooldown、permission 或 sticky 状态。
 
-### 成本因子
+## Sticky 与队首短等
 
-`成本占比` 衡量"客户付的钱里被上游成本吃掉多少"，越小越便宜、毛利越高。成本因子
-`1 − 成本权重 × 成本占比`：越便宜越接近 1、拿到越多流量；越贵扣得越多，但因为有
-**成本权重**上限（例如 0.5），再贵也最多降到 `1 − 成本权重`。它让流量在同等可用性下
-优先流向更划算的渠道，同时按比例仍使用较贵的渠道。
+- Snapshot 阶段排除 sticky Channel 时，置顶失败并清除绑定。
+- Snapshot 后 Acquire 返回 breaker open 或 half-open busy 时清除绑定；rate/concurrency、permission 和其他
+  denied reason 不清除绑定。
+- 冻结计划首候选首次因 `concurrency_limited` 或 `rate_limited` 被拒时，执行器按
+  `gateway.routing_sticky` 预算无资源等待一次，再用新 permit ID 和当时 revision 重试。
+- 默认等待预算为 500ms 加 0 到 100ms 抖动，并受请求 deadline 限制。
+- 同一首候选的 primary transport 与透明 fallback 共用一次等待预算；后续候选不等待。
 
-## 评分参数与热更新
+## 可观测事实
 
-评分参数集中在运行态设置 `gateway.routing_balance`，支持热更新、独立版本、多实例一致：
+Route runtime 接口按模型返回候选资格、容量、错误率、TTFT EWMA 与样本数、`CostRatio`、成本因子、最终
+权重、breaker、cooldown、permission 和近 1/5 分钟实际选中占比。执行日志与 routing trace 分别记录候选
+排除、冻结顺序和真实尝试。当前没有一条记录同时关联评分快照、每次 `AcquireAttempt` 返回、transport 与
+permit 终结。
 
-| 参数 | 含义 |
-| --- | --- |
-| `ttft_target_ms` | TTFT目标（首字延迟参照线，毫秒） |
-| `ttft_weight` | TTFT权重（延迟在质量因子中的话语权，0~1） |
-| `ttft_ewma_alpha` | 更新 TTFT 均值时的 EWMA 平滑系数 |
-| `cost_weight` | 成本权重（成本在最终权重中的话语权，0~1） |
-| `minimum_routing_factor` | 质量因子与成本因子的下限 |
+## 代码与测试证据
 
-修改后经持久化 + 运行态发布秒级生效；只影响后续评分，不清空既有 TTFT、熔断或限流状态。
+当前代码和测试覆盖候选过滤、`CostRatio`、容量/错误率/TTFT/成本公式、旧四字段 control、加权随机且不放回、
+全零容量压力排序、half-open 追加、sticky 置顶、队首短等、过期错误窗口只读中性化和逐 transport permit。
 
-## 边界规则
+## 状态说明
 
-| 状态或条件 | 预期行为 |
-| --- | --- |
-| 候选无流式样本 | 延迟惩罚记 0（不因缺样本而误罚） |
-| 候选处于 half-open | 最终权重记 0，不参与加权随机，只走独立探测 |
-| 所有容量维度未知 | 容量分与质量因子退化为中性 1，仍保留成本因子 |
-| 所有候选容量为 0 | 不做加权随机，改按"压力"升序（最空的先上） |
-| 命中会话粘性 | 绑定渠道置顶；渠道已被硬摘除时置顶落空并清除绑定 |
-| `fixed` 模式 | 不加权，保持既定顺序 |
-| 运行态不可信 | fail-closed，拒绝而非无控制放行 |
+本文于 2026-07-26 按当前 Gateway 代码、Schema 与现有测试接收为 `active`。
 
-## 算例
+## 相关决策
 
-某线路对同一模型有两个候选（数值取自一次真实运行态快照，参数
-`ttft_weight=0.35`、`ttft_target_ms=2000`、`cost_weight=0.5`、`minimum_routing_factor=0.05`）：
-
-**候选 A（较贵、已有较慢的流式样本）**
-
-```
-容量分   = 1
-延迟惩罚 = 4478.6 ÷ (4478.6 + 2000) = 0.691
-质量因子 = max(0.05, (1 − 0) × (1 − 0.35 × 0.691)) = 0.758
-成本占比 = 0.533 ⇒ 成本因子 = max(0.05, 1 − 0.5 × 0.533) = 0.733
-最终权重 = 1 × 0.758 × 0.733 = 0.556
-```
-
-**候选 B（较便宜、暂无流式样本）**
-
-```
-容量分   = 1
-延迟惩罚 = 0（无流式样本）
-质量因子 = max(0.05, (1 − 0) × (1 − 0.35 × 0)) = 1.0
-成本占比 = 0.268 ⇒ 成本因子 = max(0.05, 1 − 0.5 × 0.268) = 0.866
-最终权重 = 1 × 1.0 × 0.866 = 0.866
-```
-
-候选 B 权重更高（更便宜、且暂无延迟惩罚），因此被首选的概率更大；候选 A 仍按
-权重比例分到相当流量并作为 fallback。首选概率 ∝ 最终权重，选中后从池中移除，再对
-剩余候选按权重抽取，形成本次请求的完整 fallback 顺序。
-
-## 可观测性
-
-线路实时运行态接口按模型返回逐候选的评分明细：`eligible`、容量分、错误率、
-TTFT均值与样本数（`ttft_sample_source=stream_only`）、成本占比、成本因子、最终权重，
-以及近 1/5 分钟的实际选中占比。它与执行使用同一评分函数，**所见即所用**。
-
-## 相关决策与规范
-
-- 术语（协议 / 端点 / 上游源站）：[ADR-0001 统一领域术语](../decisions/adr-0001-domain-terminology.md)。
-- 平台客观化与 fail-closed 原则：[平台设计原则](../../../architecture/principles.md)。
-- 支撑本设计的领域决策（以客观信号取代健康分、成本加权分流）建议在
-  [网关领域决策](../decisions/README.md)中补录为正式决策记录（当前待补）。
-
-## 待解决问题
-
-- 客观信号取代健康分、成本加权分流的正式决策记录（ADR）待在网关领域决策中补齐。
-- 线路运行态接口的完整字段说明是否单列页面/契约文档，待与网关契约设计一并规划。
+- [ADR-0009：Balanced 路由](../decisions/adr-0009-objective-balanced-routing.md)
+- [ADR-0010：上游熔断归因](../decisions/adr-0010-upstream-breaker-attribution.md)
+- [ADR-0007：原子准入控制](../decisions/adr-0007-atomic-admission-control.md)
