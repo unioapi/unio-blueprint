@@ -56,6 +56,7 @@ Provider 列表不逐行读取 Redis 运行态，详细运行态属于 Provider 
 | 状态或条件 | 预期行为 | 恢复方式 |
 | --- | --- | --- |
 | Channel 无路由 TTFT 样本 | 不显示或明确 `ttft_samples=0`；合法 0ms 样本仍有正样本数 | 等待真实流式 attempt 经 permit `Finish` 应用。 |
+| Channel 当前配置尚无运行身份 | 按无样本展示；runtime Channel revision 为空不视为版本不一致，不隐藏当前容量与权重 | 首次真实请求取得 permit 时延迟建立运行身份。 |
 | 运行态基础设施故障 | 显示准入已拒绝，不回退为“健康”或无样本 | 运行态恢复与对账后重新观察。 |
 | 配置版本 stale | 不展示旧 breaker、Channel TTFT 或权重 | 等待当前版本事实。 |
 | 多币种金额 | 分币种展示，不计算总和 | 在币种内查看金额与比率。 |
