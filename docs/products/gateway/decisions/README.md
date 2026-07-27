@@ -3,7 +3,7 @@ title: Gateway（网关）领域决策
 description: 只影响网关领域的架构决策索引。
 status: active
 owner: 网关团队
-last_updated: 2026-07-26
+last_updated: 2026-07-27
 related:
   - ../README.md
   - ../../../decisions/README.md
@@ -51,5 +51,6 @@ related:
 | [ADR-0009](adr-0009-objective-balanced-routing.md) | active | Balanced 候选过滤、权重、排序与准入时序。 |
 | [ADR-0010](adr-0010-upstream-breaker-attribution.md) | active | 上游结果归因、breaker 与恢复状态机。 |
 | [ADR-0011](adr-0011-runtime-deployment-boundaries.md) | active | 当前进程、依赖、健康探针与运行控制边界。 |
+| [ADR-0012](adr-0012-provider-channel-route-lifecycle.md) | proposed | Origin 并入 Provider 后的供给关系与生命周期。 |
 
 新建时使用 [ADR 模板](../../../templates/adr.md)。

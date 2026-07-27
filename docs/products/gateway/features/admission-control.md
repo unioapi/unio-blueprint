@@ -3,7 +3,7 @@ title: 准入控制
 description: Gateway 在请求与候选两个层次取得、持有和收口运行资源的当前行为。
 status: active
 owner: 网关团队
-last_updated: 2026-07-26
+last_updated: 2026-07-27
 related:
   - ../glossary.md
   - routing-load-balancing.md
@@ -112,6 +112,10 @@ denied candidate 不创建 attempt、不调用该候选上游。除候选 Acquir
 
 Channel 层 RPM、RPD、TPM 和并发都支持 `NULL` 继承默认、`0` 不执行上限拒绝、正数作为明确上限。
 成功 Acquire 在 `0` 配置下仍写 RPM/RPD 计数和并发 active set；TPM 只在输入估算大于零时写入。
+
+Channel 层四类限额都以 `channel_id` 为资源主体，不按 Route 拆桶。同一个 Channel 同时加入多条 Route 时，
+来自这些 Route 的 attempt 共同消耗该 Channel 的 RPM、RPD、TPM 和并发额度。请求层限额与此独立，仍按
+`(Route, User Account)` 计数，因此不同 Route 不共享同一个请求层桶。
 
 request RPD 桶使用覆盖 UTC 日窗口的 TTL。Channel RPD 当前与 RPM/TPM 共用由 permit TTL 派生的短 TTL，
 默认约 7.5 分钟；同一 UTC 日内如果计数器静默过期，RPD 会从零重新开始。因此 Channel RPD 不能保证
