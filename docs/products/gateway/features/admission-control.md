@@ -9,7 +9,7 @@ related:
   - routing-load-balancing.md
   - resilience-circuit-breakers.md
   - ../decisions/adr-0007-atomic-admission-control.md
-  - ../decisions/adr-0011-runtime-deployment-boundaries.md
+  - ../decisions/adr-0013-provider-runtime-fencing.md
 ---
 
 # 功能设计：准入控制
@@ -52,10 +52,10 @@ identity/config 会使整批快照失败；其他不可用状态按候选过滤�
 
 - request token 仍为 active，且已经按本次相同输入估算 Reserve；
 - runtime integrity epoch/revision；
-- Origin control、状态与 BaseURL 围栏，以及 Channel 对 Origin 身份和 revision 的绑定；
+- Provider origin/status control、双 revision 与 fence，以及 Channel 对 Provider 身份的绑定；
 - ChannelRate、GlobalConcurrency、CircuitBreaker 和 ChannelAdmission control 的当前 committed revision；
 - 当前 429 cooldown 和 `(Channel, Model)` permission pause；
-- Origin/Channel breaker 与 half-open 探测租约；
+- Provider/Channel breaker 与 half-open 探测租约；
 - Channel 并发、RPM、RPD 和 TPM 门槛。
 
 全部检查通过后，脚本才统一写入计数器、并发/half-open 租约和服务端 permit。业务 denial 不创建 permit，
@@ -89,7 +89,7 @@ denied candidate 不创建 attempt、不调用该候选上游。除候选 Acquir
   补记到 Channel TPM，这是当前实现边界。
 - 限额资源按 permit 固化的原始桶身份收口。Finish 不重新校验签发时的 ChannelRate、GlobalConcurrency、
   ChannelAdmission 或 CircuitBreaker revision，而使用当前 committed breaker 配置推进 breaker；流式 TTFT 使用
-  当前 committed routing-balance 参数。Origin/Channel 围栏变化可使 breaker/TTFT 写入成为 stale/no-op，
+  当前 committed routing-balance 参数。Provider/Channel 围栏变化可使 breaker/TTFT 写入成为 stale/no-op，
   但资源收口先执行。
 - 上述主动收口不适用于 integrity epoch 已换代的 token/permit。Manager 会在 Redis 调用前因 PostgreSQL 当前
   epoch 不匹配而拒绝 request Finalize、permit Finish 或 Abort；Redis 中资源不会由该调用释放，只能等待租约或
@@ -137,7 +137,7 @@ request RPD 桶使用覆盖 UTC 日窗口的 TTL。Channel RPD 当前与 RPM/TPM
 ## 数据、安全与可观测性
 
 运行态包含 active/pending control、独立 revision、完整性标记、服务端 request token / permit 和有界终态记录。
-公开 API 不暴露 permit、候选数、Channel、Provider Origin、内部 Redis key 或内部 denial reason。Redis 不可用时
+公开 API 不暴露 permit、候选数、Provider、Channel、上游地址、内部 Redis key 或内部 denial reason。Redis 不可用时
 没有退回本机限流、并发或 breaker 估计的放行路径。
 
 当前指标、日志和 routing trace 分别记录 allow、limited、fallback、runtime-sync-required、Store 故障、

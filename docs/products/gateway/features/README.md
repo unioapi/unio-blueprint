@@ -3,7 +3,7 @@ title: Gateway（网关）功能设计
 description: 网关自有功能与内部调度行为的产品级设计索引。
 status: active
 owner: 网关团队
-last_updated: 2026-07-26
+last_updated: 2026-07-27
 related:
   - ../README.md
   - ../overview.md
@@ -56,7 +56,7 @@ Gateway 的公开入口、Provider 映射、请求与账务生命周期、模型
 | [路由负载均衡](routing-load-balancing.md) | active | balanced 权重调度与客观信号公式。 |
 | [熔断与韧性](resilience-circuit-breakers.md) | active | 上游责任归因、breaker 与恢复退避。 |
 | [运行控制与恢复](runtime-control-recovery.md) | active | 配置代际、围栏、发布和 fail-closed 恢复。 |
-| [数据生命周期](data-lifecycle.md) | active | Provider、Provider Origin、Channel 与 Route 的归档、恢复和引用保护。 |
+| [数据生命周期](data-lifecycle.md) | active | Provider、Channel 与 Route 的归档、恢复和引用保护。 |
 
 状态以各文档的 Front Matter 为准。`active` 确认文中记录的是当前实现事实。改变 Gateway 行为时，先在
 Gateway 编写临时改造计划；实现和测试通过后再更新本目录。

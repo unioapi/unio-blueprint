@@ -40,17 +40,19 @@ related:
 
 | ADR | 状态 | 主题 |
 | --- | --- | --- |
-| [ADR-0001](adr-0001-domain-terminology.md) | active | 统一协议、端点与 Provider Origin 术语。 |
+| [ADR-0001](adr-0001-domain-terminology.md) | active | 统一协议、端点与历史 Provider Origin 术语；供给模型部分被 ADR-0012 取代。 |
 | [ADR-0002](adr-0002-route-product-pricing.md) | active | API Key 绑定的 Route 供给、调度与客户定价边界。 |
 | [ADR-0003](adr-0003-billing-settlement.md) | active | 预付授权、token 结算、补扣/核销、快照与恢复边界。 |
 | [ADR-0004](adr-0004-model-capabilities.md) | active | 模型能力声明与运行时可执行能力分离。 |
 | [ADR-0005](adr-0005-request-identity.md) | active | HTTP correlation ID、持久业务请求 ID 与数据库关系键分离。 |
 | [ADR-0006](adr-0006-protocol-adapter-boundary.md) | active | 公开协议、Adapter registry、原生与桥接路径的当前边界。 |
 | [ADR-0007](adr-0007-atomic-admission-control.md) | active | 请求和候选两层原子准入及当前收口限制。 |
-| [ADR-0008](adr-0008-runtime-state-fencing.md) | active | Provider Origin、Channel、control 与 runtime epoch 围栏。 |
+| [ADR-0008](adr-0008-runtime-state-fencing.md) | superseded | 历史 Provider Origin、Channel、control 与 runtime epoch 围栏。 |
 | [ADR-0009](adr-0009-objective-balanced-routing.md) | active | Balanced 候选过滤、权重、排序与准入时序。 |
-| [ADR-0010](adr-0010-upstream-breaker-attribution.md) | active | 上游结果归因、breaker 与恢复状态机。 |
+| [ADR-0010](adr-0010-upstream-breaker-attribution.md) | superseded | 历史 Origin/Channel 上游结果归因与 breaker 状态机。 |
 | [ADR-0011](adr-0011-runtime-deployment-boundaries.md) | active | 当前进程、依赖、健康探针与运行控制边界。 |
-| [ADR-0012](adr-0012-provider-channel-route-lifecycle.md) | proposed | Origin 并入 Provider 后的供给关系与生命周期。 |
+| [ADR-0012](adr-0012-provider-channel-route-lifecycle.md) | active | Provider、Channel 与 Route 的供给关系与生命周期。 |
+| [ADR-0013](adr-0013-provider-runtime-fencing.md) | active | Provider 双 revision、Channel、control 与 runtime epoch 围栏。 |
+| [ADR-0014](adr-0014-provider-breaker-attribution.md) | active | Provider 与 Channel breaker、证据和独立反馈归因。 |
 
 新建时使用 [ADR 模板](../../../templates/adr.md)。

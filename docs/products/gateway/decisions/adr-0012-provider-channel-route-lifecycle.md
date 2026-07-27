@@ -1,7 +1,7 @@
 ---
 title: "ADR-0012：Provider、Channel 与 Route 供给生命周期"
 description: "定义 Origin 并入 Provider 后的供给关系、状态不变量以及编辑、启停、归档与恢复规则。"
-status: proposed
+status: active
 owner: 网关团队
 last_updated: 2026-07-27
 related:
@@ -11,6 +11,8 @@ related:
   - adr-0001-domain-terminology.md
   - adr-0008-runtime-state-fencing.md
   - adr-0010-upstream-breaker-attribution.md
+  - adr-0013-provider-runtime-fencing.md
+  - adr-0014-provider-breaker-attribution.md
   - ../../admin/decisions/adr-0002-provider-origin-management.md
   - ../../../templates/adr.md
 ---
@@ -19,12 +21,9 @@ related:
 
 ## 背景
 
-Gateway 当前使用 Provider、Provider Origin、Channel 与 Route 表达上游供给。目标改造把唯一上游根地址
-`origin`、公共故障域和两条运行 revision 合并到 Provider，删除独立 Provider Origin 实体。合并后需要重新
-明确 Provider、Channel 与 Route 的关系，以及三者编辑、启停、归档和恢复时是否影响其他实体。
-
-当前实现事实仍以[数据生命周期](../features/data-lifecycle.md)为准；本 ADR 在被接受并完成实现验证前只记录
-目标决策，不能用来宣称改造已经交付。
+Gateway 使用 Provider、Channel 与 Route 表达上游供给。唯一上游根地址 `origin`、公共故障域和两条运行
+revision 已合并到 Provider，独立 Provider Origin 实体已删除。本 ADR 明确三者关系，以及编辑、启停、归档
+和恢复时是否影响其他实体。
 
 ## 决策驱动因素
 
@@ -133,9 +132,9 @@ Provider 是上游总闸，Channel 是具体供给单元，Route 是面向客户
 ### 中性影响或后续工作
 
 - Admin 需要按 conflict 返回引导正确的前置操作，但不能替代用户静默执行级联。
-- Origin 并入 Provider 后的围栏、breaker 与运行态恢复由相关 superseding ADR 继续定义。
-- 当前 active 功能文档只能在 Schema、代码和测试完成后改写为新实现事实。
-- Gateway 与 Admin 在独立仓库完成并分别验证，作为同一发布批次切换；两边完成后最后回写 Blueprint 当前事实。
+- Provider 围栏、breaker 与运行态恢复分别由 [ADR-0013](adr-0013-provider-runtime-fencing.md) 和
+  [ADR-0014](adr-0014-provider-breaker-attribution.md) 定义。
+- Gateway 与 Admin 作为同一发布批次一次切换，不提供旧 Schema、API、Redis key 或 DTO 兼容。
 
 ## 风险与缓解措施
 
@@ -148,18 +147,14 @@ Provider 是上游总闸，Channel 是具体供给单元，Route 是面向客户
 
 ## 落地与验证
 
-- 先完成 Origin 并入 Provider 的 Schema、Gateway、Admin 与运行态改造，再更新 active 功能文档。
+- Gateway 与 Admin Schema、API、运行态和页面已经按本 ADR 完成一次切换。
 - 合同测试覆盖非法状态转换的 conflict，以及所有操作均不发生静默级联。
-- 集成测试证明 Route 停用保留绑定和池、Channel 停用保留池、三类恢复都落入 `disabled`。
-- 归档测试证明引用必须显式解除，未完成 Provider 变更会阻止归档，历史事实仍可读取。
+- 集成测试证明 Channel 停用保留 Route 池、恢复落入 `disabled`、归档引用必须显式解除。
 - 长流与异常测试证明归档后不再接收新请求，同时已开始请求仍能完成资源、usage 和结算收口。
-- Gateway 与 Admin 完成实现和各自验证后，最后更新 Blueprint active 功能文档；三个仓库分别正常提交和推送，
-  不创建 PR。
 
 ## 取代关系
 
-- 取代：实现并接受后，取代 [ADR-0001](adr-0001-domain-terminology.md) 中 Provider Origin 领域模型部分；
-  Provider 围栏和 breaker 部分的取代关系由对应后续 ADR 明确。
+- 取代：[ADR-0001](adr-0001-domain-terminology.md) 中 Provider Origin 领域模型部分。
 - 被取代：无。
 
 ## 参考资料
@@ -167,4 +162,4 @@ Provider 是上游总闸，Channel 是具体供给单元，Route 是面向客户
 - [数据生命周期](../features/data-lifecycle.md)
 - [准入控制](../features/admission-control.md)
 - [路由负载均衡](../features/routing-load-balancing.md)
-- [Admin ADR-0002：Provider Origin 与供给管理](../../admin/decisions/adr-0002-provider-origin-management.md)
+- [Admin ADR-0002：Provider 与 Channel 供给管理](../../admin/decisions/adr-0002-provider-origin-management.md)

@@ -3,11 +3,11 @@ title: "ADR-0007：原子准入控制"
 description: "记录当前请求级 admission、只读候选快照与逐 transport AttemptPermit 边界。"
 status: active
 owner: 网关团队
-last_updated: 2026-07-26
+last_updated: 2026-07-27
 related:
   - ../features/admission-control.md
   - ../features/routing-load-balancing.md
-  - adr-0008-runtime-state-fencing.md
+  - adr-0013-provider-runtime-fencing.md
   - adr-0011-runtime-deployment-boundaries.md
 ---
 
@@ -16,8 +16,8 @@ related:
 ## 范围
 
 本文记录当前 Gateway 的 request-admission token、只读候选快照、请求 TPM Reserve、逐 transport
-`AttemptPermit`、资源终结和公开错误聚合行为。术语遵循[网关词汇表](../glossary.md)：Channel 挂在
-Provider Origin 上。
+`AttemptPermit`、资源终结和公开错误聚合行为。术语遵循[网关词汇表](../glossary.md)：Channel 直接归属
+Provider，Provider 保存唯一 `origin`。
 
 ## 当前实现结论
 
@@ -36,7 +36,7 @@ Provider Origin 上。
 3. 每个真实 transport 前使用新的 `AttemptPermit` 原子取得候选资源，包括 compact 原生调用失败后的透明回落。
    Acquire 强读 integrity、ChannelRate、
    GlobalConcurrency 与 CircuitBreaker control facts；RouteRate 已绑定 request token，RoutingBalance 只用于快照，
-   ChannelAdmission 与 Origin/Channel config revision 来自冻结候选计划。
+   ChannelAdmission 与 Provider/Channel config revision 来自冻结候选计划。
 4. candidate 业务拒绝发生在 attempt/transport 前，不调用该候选上游并可继续 fallback；Go/Store 错误或
    `breaker_store_unavailable` 终止执行。正常返回的业务 denial 不创建 permit 或候选资源；该保证不扩展到 Redis
    Lua 运行错误或响应结果不确定的情形。只有 rate/concurrency 的全部拒绝聚合为 429，混合或其他拒绝聚合为 503。
@@ -47,7 +47,7 @@ Provider Origin 上。
    handler 返回前继续持有入口并发，随后由 Finalize 收口。输入估算为零时不会预占请求或 Channel TPM，后到的
    正数 actual TPM 也不会补记到 Channel TPM。
 7. token/permit 的同 ID、同 fingerprint 幂等重试只覆盖 active 状态；终态同 ID 返回冲突。普通 control 或
-   Origin/Channel revision 热更新只影响新 Acquire，旧 permit 按固化桶身份收口；integrity epoch 换代则会在
+   Provider/Channel revision 热更新只影响新 Acquire，旧 permit 按固化桶身份收口；integrity epoch 换代则会在
    Redis 调用前阻止 request Finalize 及 permit Finish/Abort，资源只能依赖租约或 TTL 过期。
 
 ## 当前边界
@@ -95,4 +95,5 @@ Abort/Finish、TPM Reserve、普通 revision stale、integrity epoch mismatch、
 
 - [准入控制](../features/admission-control.md)
 - [运行控制与恢复](../features/runtime-control-recovery.md)
+- [ADR-0013：Provider 运行态代际围栏](adr-0013-provider-runtime-fencing.md)
 - [ADR-0011：运行时部署边界](adr-0011-runtime-deployment-boundaries.md)

@@ -3,7 +3,7 @@ title: Admin（管理后台）概览
 description: 管理后台面向内部运营的产品定位、能力边界和关键旅程。
 status: draft
 owner: 管理后台团队
-last_updated: 2026-07-25
+last_updated: 2026-07-27
 related:
   - README.md
   - glossary.md
@@ -28,7 +28,7 @@ Admin 是 UnioAPI 面向内部运营人员的工作台：它把供应、凭据�
 
 | 受众 | 任务 | 当前困难 |
 | --- | --- | --- |
-| 运营人员 | 维护 [Provider、Provider Origin、Channel 与 Route](../gateway/glossary.md) 的可用配置 | 配置变更、凭据状态和故障域必须彼此可区分。 |
+| 运营人员 | 维护 [Provider、Channel 与 Route](../gateway/glossary.md) 的可用配置 | 地址/状态 revision、凭据和故障域必须彼此可区分。 |
 | 运营人员 | 检查请求、用量、结算与经营事实 | 金额、延迟和运行态不能被不透明的聚合分数掩盖。 |
 | 运营人员 | 归档不再使用的供给，同时保留历史解释能力 | 硬删除会破坏历史关联与账务解释。 |
 
@@ -54,10 +54,10 @@ Admin 是 UnioAPI 面向内部运营人员的工作台：它把供应、凭据�
 
 ## 主要用户旅程
 
-1. 运营人员从 Provider 列表查看其 Provider Origin 摘要，创建或维护 Origin 与 Channel。
+1. 运营人员从 Provider 列表查看唯一 API Root 与双 revision，在 Provider 详情维护地址、状态和 Channel。
 2. 运营人员轮换 Channel 凭据；系统先保存并暂停新配置，再以真实上游检测决定是否恢复可路由状态。
-3. 运营人员查看渠道、源站和线路的客观运行事实，定位是凭据、容量、熔断、同步还是历史质量问题。
-4. 运营人员归档不再使用的实体，必要时迁移线路绑定；恢复后按受控状态重新启用。
+3. 运营人员查看 Provider、Channel 和 Route 的客观运行事实，定位是凭据、容量、熔断、同步还是历史质量问题。
+4. 运营人员按 Route → Channel → Provider 解除依赖并归档，不接受静默级联；恢复后按受控状态重新启用。
 5. 运营人员在经营驾驶舱先判断经营状态，再下钻分析或进入实时监控。
 
 ## 边界与依赖
@@ -84,7 +84,7 @@ Admin 是 UnioAPI 面向内部运营人员的工作台：它把供应、凭据�
 ## 相关决策
 
 - [ADR-0001：经营驾驶舱采用客观运营事实](decisions/adr-0001-objective-operational-facts.md)
-- [ADR-0002：Provider Origin 与供给管理](decisions/adr-0002-provider-origin-management.md)
+- [ADR-0002：Provider 与 Channel 供给管理](decisions/adr-0002-provider-origin-management.md)
 
 ## 待解决问题
 

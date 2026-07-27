@@ -3,7 +3,7 @@ title: "ADR-0006：协议与 Provider 适配边界"
 description: "记录公开协议分离、Adapter 运行时选择与统一商业事实的当前实现。"
 status: active
 owner: 网关团队
-last_updated: 2026-07-26
+last_updated: 2026-07-27
 related:
   - ../README.md
   - ../glossary.md
@@ -26,8 +26,8 @@ Gateway 当前维护 OpenAI 与 Anthropic 两个公开协议族。OpenAI Chat Co
 OpenAI Responses 和 Anthropic Messages 有独立的入口 DTO、公开响应、流式事件和错误映射；
 Responses 是 OpenAI 协议族下的端点，不是第三个协议族。
 
-本 ADR 使用 ADR-0001 的术语：协议是 API 格式族，端点是公开操作/路径，上游源站是地址与
-公共故障域；渠道是凭据、定价和适配选择单元。
+本 ADR 使用 ADR-0001/0012 的术语：协议是 API 格式族，端点是公开操作/路径，Provider 的 `origin` 是
+上游根地址并与公共故障域同属 Provider；Channel 是凭据、定价和适配选择单元。
 
 数据库先按 Channel `protocol` 限定同协议候选，lifecycle 再按
 `(protocol, adapter_key, operation capability)` 过滤本次操作可用的代码能力。

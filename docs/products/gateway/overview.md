@@ -3,7 +3,7 @@ title: Gateway（网关）概览
 description: 网关当前公开入口、身份、线路、供给与账务边界。
 status: active
 owner: 网关团队
-last_updated: 2026-07-26
+last_updated: 2026-07-27
 related:
   - README.md
   - glossary.md
@@ -32,9 +32,8 @@ Provider 适配、上游调用、用量记录和结算。
 | API Key | 直接归属 User Account，并显式绑定一条 Route | 客户凭据 |
 | Route | 保存客户定价倍率、模式和显式 Channel 池 | 客户产品边界 |
 | Model | 保存客户请求标识、基准价格和能力声明 | 通过模型目录公开 |
-| Provider | Provider Origin 与 Channel 的内部归属主体 | 不公开 |
-| Provider Origin | 保存上游 Base URL、状态 revision 与公共 breaker 故障域 | 不公开 |
-| Channel | 保存上游凭据、协议、Adapter、模型映射、成本和运行控制 revision | 不公开 |
+| Provider | 保存唯一 `origin`、独立地址/状态 revision、公共 breaker 故障域，并归属 Channel | 不公开 |
+| Channel | 归属一个 Provider，保存上游凭据、协议、Adapter、模型映射、成本和运行控制 revision | 不公开 |
 | Request | 生成或压缩调用进入持久生命周期后的业务记录 | 使用服务端生成的业务 ID |
 | Attempt | 对一个候选发起的真实上游 transport 记录 | 不公开内部供给结构 |
 
@@ -57,13 +56,13 @@ Provider 适配、上游调用、用量记录和结算。
 - OpenAI 与 Anthropic 两个 ingress 协议族及同协议 Provider 适配。
 - Route 内候选过滤、fixed/balanced 排序、sticky、fallback、请求准入和候选准入。
 - 预付余额授权、token 计费、capture、overage debit、write-off、partial settlement 与 recovery job。
-- Provider、Provider Origin、Channel、Model、价格、成本和运行 control 的管理服务。
+- Provider、Channel、Model、价格、成本和运行 control 的管理服务。
 - 模型能力字典、模型声明、外部目录采纳/刷新 service 和 Adapter 画像物化。
 - 请求、attempt、usage、价格、成本、账本、routing trace 和审计记录。
 
 ## 当前边界
 
-- 公开响应不包含 Provider、Provider Origin、Channel、上游凭据、渠道成本或内部毛利。
+- 公开响应不包含 Provider、Channel、上游地址、上游凭据、渠道成本或内部毛利。
 - 路由不跨越 API Key 绑定的 Route，也不接受客户直接选择 Channel。
 - OpenAI ingress 只使用 OpenAI protocol Channel；Anthropic ingress 只使用 Anthropic protocol Channel。
 - 模型能力声明不参与真实候选准入；运行时是否可执行由 Adapter registry 的 operation capability 决定。

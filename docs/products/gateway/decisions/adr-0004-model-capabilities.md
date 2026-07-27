@@ -3,7 +3,7 @@ title: "ADR-0004：模型能力声明与运行时能力分离"
 description: "模型能力声明用于目录发现；真实请求能力由 Channel 协议和代码 Adapter registry 决定。"
 status: active
 owner: 网关团队
-last_updated: 2026-07-26
+last_updated: 2026-07-27
 related:
   - ../overview.md
   - ../features/model-capabilities-catalog.md
@@ -67,7 +67,7 @@ OpenAI-compatible `/v1/models` 在 API Key 绑定 Route 的可见供给中聚合
 - `?capability=` 只读取第一个参数值，把其中逗号分隔的非空 key 按 AND 语义筛选；重复参数的
   后续值被忽略，未知 key 不报错但通常匹配不到模型；
 - 响应只返回 capability key，不返回 support level 或 `limits`；
-- 查询不读取 `deprecated`、`protocol_scope`、Channel protocol、Provider Origin 状态或代码
+- 查询不读取 `deprecated`、`protocol_scope`、Channel protocol、Provider 状态或代码
   Adapter registry。
 
 因此，一个模型出现在 `/v1/models` 中，只能证明当前目录 SQL 的 Route 供给等可见性条件成立；

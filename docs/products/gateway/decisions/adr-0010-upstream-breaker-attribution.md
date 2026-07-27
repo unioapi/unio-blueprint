@@ -1,13 +1,14 @@
 ---
 title: "ADR-0010：上游熔断归因"
 description: "记录真实上游结果进入 Channel 与 Provider Origin breaker 的当前分类和状态机。"
-status: active
+status: superseded
 owner: 网关团队
-last_updated: 2026-07-26
+last_updated: 2026-07-27
 related:
   - ../features/resilience-circuit-breakers.md
   - ../features/routing-load-balancing.md
   - adr-0008-runtime-state-fencing.md
+  - adr-0014-provider-breaker-attribution.md
 ---
 
 # ADR-0010：上游熔断归因
@@ -72,11 +73,12 @@ pause、状态转换和迟到结果围栏。
 ## 取代关系
 
 - 取代：无 Blueprint ADR；这是对上述来源的合并记录。
-- 被取代：无。
+- 被取代：[ADR-0014：Provider 与 Channel 熔断归因](adr-0014-provider-breaker-attribution.md)。
 
 ## 状态说明
 
-本文于 2026-07-26 按当前 Gateway 代码、Schema 与现有测试接收为 `active`。
+本文于 2026-07-26 按当时 Gateway 代码、Schema 与测试接收；2026-07-27 因 Origin 并入 Provider 被
+[ADR-0014](adr-0014-provider-breaker-attribution.md) 取代，保留为决策谱系。
 
 ## 参考资料
 

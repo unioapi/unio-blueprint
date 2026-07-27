@@ -3,7 +3,7 @@ title: Gateway Provider 适配
 description: Provider、Origin、Channel、Adapter、协议转换和 usage 归一的当前实现边界。
 status: active
 owner: 网关团队
-last_updated: 2026-07-26
+last_updated: 2026-07-27
 related:
   - ../README.md
   - ../glossary.md
@@ -18,8 +18,8 @@ related:
 ## 摘要
 
 Gateway 以 `(protocol, adapter_key)` 选择代码适配能力，把客户协议、业务生命周期和上游 wire
-处理分开。当前数据边界是：Provider 表示供应商与记账主体；Provider Origin 持有全局唯一 Base URL
-并作为公共故障域；Channel 绑定同一 Provider 的 Origin，持有协议、AdapterKey、凭据、限额并关联
+处理分开。当前数据边界是：Provider 表示供应商与记账主体，持有全局唯一 `origin` 并作为公共故障域；
+Channel 直接绑定 Provider，持有协议、AdapterKey、凭据、限额并关联
 上游成本；`channel_models` 保存客户模型到上游模型的映射。客户售价由模型价格与线路价格倍率确定，
 不直接存放在 Channel 上。
 
@@ -31,8 +31,8 @@ Gateway 以 `(protocol, adapter_key)` 选择代码适配能力，把客户协议
 | Service 与 lifecycle | 路由、候选能力过滤、运行态准入、输入估算、预授权、attempt、fallback、结算、恢复、公开响应映射和客户模型回显。 |
 | Adapter | 把协议族内部请求编码为上游 wire，发起一次 HTTP 调用，解析非流式响应或 SSE，分类稳定上游错误，并在同次解析中生成内部响应与 `ResponseFacts`。 |
 
-Adapter 不选择 Channel，不查询 Provider、Origin、Channel 或价格表，也不保存请求级业务状态。调用参数
-来自候选运行快照，其中包含 Origin Base URL、Channel 凭据与超时，上游模型来自候选模型映射。
+Adapter 不选择 Channel，不查询 Provider、Channel 或价格表，也不保存请求级业务状态。调用参数来自候选
+运行快照，其中包含 Provider origin、Channel 凭据与超时，上游模型来自候选模型映射。
 当前 Adapter 仍读取少量进程级配置：非流式上游响应体上限、流式 idle timeout，以及 tokenizer 的
 媒体估算选项。官方 Anthropic Adapter 还有一个明确例外：每次请求通过注入的 provider 读取热更新的
 `anthropic.beta_policy`，该 provider 底层使用 SettingsStore 的本地、Redis 与数据库读取链。

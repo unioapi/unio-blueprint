@@ -3,12 +3,12 @@ title: Gateway（网关）词汇表
 description: 网关当前领域术语及其实现边界。
 status: active
 owner: 网关团队
-last_updated: 2026-07-26
+last_updated: 2026-07-27
 related:
   - README.md
   - overview.md
   - ../../architecture/glossary.md
-  - decisions/adr-0001-domain-terminology.md
+  - decisions/adr-0012-provider-channel-route-lifecycle.md
   - decisions/adr-0002-route-product-pricing.md
 ---
 
@@ -24,9 +24,9 @@ related:
 | API Key | 客户端凭据；直接归属 User Account 并显式绑定一条 Route。 |
 | Protocol（协议） | API 格式族。当前 ingress 值为 `openai` 或 `anthropic`。 |
 | Endpoint（端点） | Gateway 公开的 API 操作或路径，每个 Endpoint 归属一个 Protocol。 |
-| Provider（服务商） | Provider Origin 与 Channel 的内部归属主体。 |
-| Provider Origin（上游源站） | 上游 Base URL、状态 revision、围栏和公共 breaker 故障域。 |
-| Channel（渠道） | 上游凭据、Protocol、Adapter、模型映射、成本和运行控制事实单元。 |
+| Provider（服务商） | 上游供给主体；保存唯一 `origin`、地址/状态 revision、围栏和公共 breaker 故障域，并归属 Channel。 |
+| Origin（上游根地址） | Provider 上的 URL 值，不是独立领域实体；同一地址全局唯一。 |
+| Channel（渠道） | 归属一个 Provider，保存上游凭据、Protocol、Adapter、模型映射、成本和运行控制事实。 |
 | Candidate（候选） | Route 内一个 Channel 与其上游模型映射形成的可尝试项。 |
 | Route（线路） | API Key 绑定的客户定价与供给边界，保存模式和显式 Channel 池。 |
 | Model（模型） | 客户请求的模型标识，关联基准价格与模型能力声明。 |
@@ -37,5 +37,6 @@ related:
 | Cost Snapshot（成本快照） | Attempt 锁定的 Channel token 成本向量、倍率和来源事实。 |
 | Capability（能力） | 模型目录声明或 Adapter operation capability；两者分别存储并由不同路径读取。 |
 
-`ProviderEndpoint` 是 Gateway 来源文档和部分旧代码命名；Blueprint 当前术语为 `Provider Origin`，见
-[ADR-0001](decisions/adr-0001-domain-terminology.md)。
+`ProviderEndpoint` 与 `Provider Origin` 是已被
+[ADR-0012](decisions/adr-0012-provider-channel-route-lifecycle.md) 取代的历史实体名称。当前 `origin` 仅指
+Provider 上的上游根地址字段；Endpoint 仍只指 Gateway 对外 API 操作或路径。

@@ -3,13 +3,13 @@ title: 路由负载均衡（balanced 权重调度）
 description: Gateway 当前 Balanced 候选评分、排序、sticky 与逐候选准入行为。
 status: active
 owner: 网关团队
-last_updated: 2026-07-26
+last_updated: 2026-07-27
 related:
   - ../overview.md
   - ../glossary.md
   - ../decisions/adr-0001-domain-terminology.md
   - ../decisions/adr-0009-objective-balanced-routing.md
-  - ../decisions/adr-0010-upstream-breaker-attribution.md
+  - ../decisions/adr-0014-provider-breaker-attribution.md
   - admission-control.md
 ---
 
@@ -25,7 +25,7 @@ Channel 的候选池，不执行多候选加权排序。候选资源由 transpor
 
 Router 按 API Key 绑定的 Route 与请求模型生成同协议候选，并在进入 lifecycle 前处理以下事实：
 
-- Provider、Provider Origin、Channel、Model 与 Channel-Model 状态；
+- Provider、Channel、Model 与 Channel-Model 状态；
 - Channel protocol、Adapter key、上游模型映射和 credential validity；
 - 客户售价、Channel 成本、币种与 pricing unit；
 - 七个归一化计价分项中的 Provider 成本与客户售价比。
@@ -37,9 +37,9 @@ Router 按 API Key 绑定的 Route 与请求模型生成同协议候选，并在
 
 1. Adapter registry 按 ingress protocol 与本次 operation capability 过滤候选。
 2. `SnapshotMany` 在同一次 Redis Lua 调用中核验 integrity、control revision 和候选 revision，并读取各候选的
-   Origin/Channel breaker、429 cooldown、permission pause、并发、RPM、RPD、TPM、错误窗口、Channel TTFT
+   Provider/Channel breaker、429 cooldown、permission pause、并发、RPM、RPD、TPM、错误窗口、Channel TTFT
    和当前 routing-balance control。
-3. runtime-sync、pending 或候选 revision/config stale 使整批快照返回错误。Origin disabled、cooldown、
+3. runtime-sync、pending 或候选 revision/config stale 使整批快照返回错误。Provider disabled、cooldown、
    permission pause、breaker open 或 half-open busy 等候选状态只排除对应候选。
 4. 对进入计划的候选逐一计算权重。`SnapshotMany` 是只读操作，不取得候选并发、RPM、RPD 或 TPM。
 5. 普通 closed 候选按权重加权随机且不放回排序。half-open 候选不参加普通随机，并按原顺序追加。
@@ -92,7 +92,7 @@ Channel 保存一套 stream-only TTFT EWMA：
 - 非流式调用不生成 TTFT 样本；
 - stream permit 的 `Finish` 在 Channel generation 与 revision 可应用时更新样本；
 - EWMA alpha 从 Finish 当时已提交的 `gateway.routing_balance` control 读取；
-- Provider Origin 不保存 TTFT。
+- Provider 不保存 TTFT。
 
 请求列表和 Dashboard 的 `ttft_ms` 从请求开始到客户首帧；attempt 的 `upstream_ttft_ms` 从 transport start
 到 `FirstTokenEligible`。Channel EWMA 使用 attempt 口径，并额外受 permit Finish 与围栏结果约束。
@@ -142,5 +142,5 @@ permit 终结。
 ## 相关决策
 
 - [ADR-0009：Balanced 路由](../decisions/adr-0009-objective-balanced-routing.md)
-- [ADR-0010：上游熔断归因](../decisions/adr-0010-upstream-breaker-attribution.md)
+- [ADR-0014：Provider 与 Channel 熔断归因](../decisions/adr-0014-provider-breaker-attribution.md)
 - [ADR-0007：原子准入控制](../decisions/adr-0007-atomic-admission-control.md)

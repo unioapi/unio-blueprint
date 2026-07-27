@@ -3,7 +3,7 @@ title: "功能设计：网关访问控制"
 description: "记录 API Key、用户账户、Route 与请求身份的当前行为。"
 status: active
 owner: 网关团队
-last_updated: 2026-07-26
+last_updated: 2026-07-27
 related:
   - ../overview.md
   - ../glossary.md
@@ -63,7 +63,7 @@ Admin API 当前使用单一静态 token。API Key 的创建、更新、停用�
 
 ## 公开边界
 
-- API Key 认证失败的公开响应不包含 Provider、Provider Origin、Channel、上游凭据或内部 Route 候选。
+- API Key 认证失败的公开响应不包含 Provider、Channel、上游地址、上游凭据或内部 Route 候选。
 - 普通请求日志、trace、metrics 和请求审计不保存完整 API Key 或 hash。
 - 完整 API Key 当前只由上述 Admin 数据路径和数据库 `key_plaintext` 保存或返回。
 

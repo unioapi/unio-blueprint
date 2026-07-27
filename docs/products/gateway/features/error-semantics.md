@@ -3,7 +3,7 @@ title: Gateway 错误语义
 description: Gateway 的当前内部分类、fallback、协议错误包络与敏感信息边界。
 status: active
 owner: 网关团队
-last_updated: 2026-07-26
+last_updated: 2026-07-27
 related:
   - ../README.md
   - public-api-contracts.md
@@ -40,7 +40,7 @@ Chat Completions 与 Responses handler 使用 OpenAI-compatible 错误信封；M
 错误信封。认证中间件位于协议 handler 之前，因此 Anthropic 请求的 API Key 认证失败当前也返回共享的
 OpenAI-compatible 通用错误信封。
 
-公开错误正文使用受控文案，不包含 Provider、Provider Origin、Channel、凭据、Base URL、真实上游模型
+公开错误正文使用受控文案，不包含 Provider、Channel、凭据、上游地址、真实上游模型
 或原始 Provider 响应。
 
 ## 上游错误分类

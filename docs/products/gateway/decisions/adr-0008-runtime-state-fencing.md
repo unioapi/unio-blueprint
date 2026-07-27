@@ -1,14 +1,15 @@
 ---
 title: "ADR-0008：运行态代际围栏"
 description: "以 Provider Origin、Channel 与控制版本隔离迟到结果，并在恢复前拒绝新准入。"
-status: active
+status: superseded
 owner: 网关团队
-last_updated: 2026-07-26
+last_updated: 2026-07-27
 related:
   - ../features/runtime-control-recovery.md
   - ../features/data-lifecycle.md
   - ../features/admission-control.md
   - adr-0007-atomic-admission-control.md
+  - adr-0013-provider-runtime-fencing.md
 ---
 
 # ADR-0008：运行态代际围栏
@@ -80,11 +81,12 @@ commit/release、归档与恢复的 revision 变化，以及 Channel archive/har
 ## 取代关系
 
 - 取代：无 Blueprint ADR；这是对上述来源的合并记录。
-- 被取代：无。
+- 被取代：[ADR-0013：Provider 运行态代际围栏](adr-0013-provider-runtime-fencing.md)。
 
 ## 状态说明
 
-本文于 2026-07-26 按当前 Gateway 代码、Schema 与现有测试接收为 `active`。
+本文于 2026-07-26 按当时 Gateway 代码、Schema 与测试接收；2026-07-27 因 Origin 并入 Provider 被
+[ADR-0013](adr-0013-provider-runtime-fencing.md) 取代，保留为决策谱系。
 
 ## 参考资料
 

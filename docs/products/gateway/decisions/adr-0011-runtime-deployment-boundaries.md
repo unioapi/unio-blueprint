@@ -3,12 +3,12 @@ title: "ADR-0011：运行时部署边界"
 description: "记录 Gateway 当前进程、PostgreSQL、Redis、健康探针与运行控制边界。"
 status: active
 owner: 网关团队
-last_updated: 2026-07-26
+last_updated: 2026-07-27
 related:
   - ../features/admission-control.md
   - ../features/runtime-control-recovery.md
   - adr-0007-atomic-admission-control.md
-  - adr-0008-runtime-state-fencing.md
+  - adr-0013-provider-runtime-fencing.md
   - ../../../architecture/deployment.md
 ---
 
@@ -36,7 +36,7 @@ related:
 5. Gateway、常驻 Worker 和 maintenance CLI 调用 `VerifySingleNodeDeployment`；Gateway 与常驻 Worker 还调用
    BreakerStore `Ping`。Admin 不调用这两项检查。生产 Admin 入口仍要求 PostgreSQL 与 Redis client 成功打开。
    `worker-server sync-models` 只连接 PostgreSQL。
-6. Gateway 启动时确保 runtime state epoch，开始一次全量 reconciliation，依次处理 Provider Origin、普通
+6. Gateway 启动时确保 runtime state epoch，开始一次全量 reconciliation，依次处理 Provider、普通
    runtime operation、五项关键 app setting 与全部 Channel admission control，并提交 instance reconciliation
    proof。启动期任一步返回错误都会使装配返回错误；运行期后台 reconciler 每 5 秒重复同一流程。
 7. Admin 在 PostgreSQL pool 和非 nil Redis client 下执行一次并周期执行 control reconciliation，但不执行
@@ -47,7 +47,7 @@ related:
 8. Gateway `/healthz` 固定返回 200。`/readyz` 每次读取 PostgreSQL 的 ready epoch、五项关键 control revision
    与相关 operation 终态，然后 Ping Redis 并原子核验 marker、control active/pending/revision/payload hash、
    instance reconciliation proof 与 fault latch；响应体只返回 `ready` 或 `not_ready`。普通 `/readyz` 不扫描
-   全部 Origin/Channel control，也不检查 migration 或 schema version。
+   全部 Provider/Channel control，也不检查 migration 或 schema version。
 9. Redis `run_id` 与 reconciliation proof 同时用于 readiness、request admission、candidate Snapshot 和
    Acquire。`run_id` 变化后，这些路径在新的全量 reconciliation proof 完成前拒绝准入。state epoch recovery
    处于 `awaiting_release` 时，全量 proof 可允许 maintenance smoke；普通 `/readyz` 在 release 前仍返回 503。

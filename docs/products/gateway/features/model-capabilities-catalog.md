@@ -3,7 +3,7 @@ title: 模型能力与目录
 description: Gateway 当前的能力字典、模型能力声明、Adapter 画像和外部目录边界。
 status: active
 owner: 网关团队
-last_updated: 2026-07-26
+last_updated: 2026-07-27
 related:
   - ../overview.md
   - ../glossary.md
@@ -140,7 +140,7 @@ OpenAI-compatible `/v1/models` 从调用方 Route 可见的模型聚合能力声
   被忽略，未知 key 不报错但通常匹配不到模型；
 - 模型可见性检查 Route 中的 Channel 模型绑定，但查询没有按 Channel protocol 过滤；
 - 查询不读取能力 key 的 `protocol_scope` 或 `deprecated`；
-- 查询不检查 Provider Origin 状态或当前进程的 Adapter registry。
+- 查询不检查 Provider 状态或当前进程的 Adapter registry。
 
 结果可能同时包含 OpenAI、Anthropic 或 shared 分类的 tag；这些 tag 是聚合后的模型声明，不表示当前
 请求协议一定有对应 Channel，也不表示 Adapter 会执行该字段。

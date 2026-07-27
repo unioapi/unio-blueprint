@@ -3,7 +3,7 @@ title: 运营可观测性
 description: 管理后台以客观事实支持运行判断和经营分析的设计。
 status: draft
 owner: 管理后台团队
-last_updated: 2026-07-26
+last_updated: 2026-07-27
 related:
   - ../overview.md
   - ../quality.md
@@ -37,7 +37,9 @@ related:
 
 ### 功能需求
 
-- Provider、Provider Origin、Channel、模型、线路和 Dashboard 并列展示客观事实：凭据状态、主动检测、breaker、eligible 错误率与样本、Channel 路由 TTFT EWMA、流式请求客户首帧 TTFT、attempt 上游 TTFT、流式/非流式总耗时、容量与临时超限、运行态同步、最终权重和实际分流。
+- Provider、Channel、模型、线路和 Dashboard 并列展示客观事实：Provider 双 revision 与 breaker、凭据状态、
+  主动检测、eligible 错误率与样本、Channel 路由 TTFT EWMA、流式请求客户首帧 TTFT、attempt 上游 TTFT、
+  流式/非流式总耗时、容量与临时超限、运行态同步、最终权重和实际分流。
 - 当前“可服务/不可服务/基础设施故障”只能由当前硬门禁和运行态 readiness 直接推导；基础设施故障必须明确表示准入已拒绝，并与无样本区分。
 - Channel 路由 EWMA 只使用流式 attempt 中协议定义的 `FirstTokenEligible` 样本；请求级 TTFT 使用首个客户写帧，attempt 上游 TTFT 使用真实 transport 起点。三者不得合并，非流式只显示总耗时。stale 版本不得展示旧的 open、Channel TTFT 或权重。
 - 首页为决策层，仅显示 8 项 KPI、本期与上期同长度窗口比较和状态 Banner；不放逐项明细、排行榜或 Token 拆解。
@@ -46,7 +48,8 @@ related:
 
 ### 数据边界
 
-运营视图消费经过授权的请求、用量、账务、检测和运行态事实；不展示凭据、上游正文或内部敏感诊断。Provider 列表不逐 Origin 读取 Redis 运行态，详细运行态属于 Provider 详情或实时路由页面。
+运营视图消费经过授权的请求、用量、账务、检测和运行态事实；不展示凭据、上游正文或内部敏感诊断。
+Provider 列表不逐行读取 Redis 运行态，详细运行态属于 Provider 详情或实时路由页面。
 
 ## 状态与边界情况
 
