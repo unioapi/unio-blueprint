@@ -1,17 +1,21 @@
 ---
 title: "ADR-0009：Balanced 路由"
 description: "记录 Balanced 当前候选过滤、权重计算、排序与准入时序。"
-status: active
+status: superseded
 owner: 网关团队
-last_updated: 2026-07-26
+last_updated: 2026-07-28
 related:
   - ../features/routing-load-balancing.md
   - ../features/admission-control.md
   - ../features/resilience-circuit-breakers.md
   - adr-0001-domain-terminology.md
+  - adr-0015-deterministic-cost-aware-routing.md
 ---
 
 # ADR-0009：Balanced 路由
+
+> 本 ADR 保留被取代前的加权随机设计记录。当前确定性评分、Channel Sticky 与短等边界见
+> [ADR-0015](adr-0015-deterministic-cost-aware-routing.md)。
 
 ## 范围
 
@@ -74,11 +78,11 @@ related:
 ## 取代关系
 
 - 取代：无 Blueprint ADR；这是对上述来源的合并记录。
-- 被取代：无。
+- 被取代：[ADR-0015：确定性成本感知路由与 Channel Sticky](adr-0015-deterministic-cost-aware-routing.md)。
 
 ## 状态说明
 
-本文于 2026-07-26 按当前 Gateway 代码、Schema 与现有测试接收为 `active`。
+本文曾于 2026-07-26 接收为 `active`，并于 2026-07-28 被 ADR-0015 取代。
 
 ## 参考资料
 

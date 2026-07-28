@@ -3,12 +3,13 @@ title: "ADR-0007：原子准入控制"
 description: "记录当前请求级 admission、只读候选快照与逐 transport AttemptPermit 边界。"
 status: active
 owner: 网关团队
-last_updated: 2026-07-27
+last_updated: 2026-07-28
 related:
   - ../features/admission-control.md
   - ../features/routing-load-balancing.md
   - adr-0013-provider-runtime-fencing.md
   - adr-0011-runtime-deployment-boundaries.md
+  - adr-0015-deterministic-cost-aware-routing.md
 ---
 
 # ADR-0007：原子准入控制
@@ -29,7 +30,8 @@ Provider，Provider 保存唯一 `origin`。
 
 1. 当前注册且受保护的公开 `/v1` 请求只取得一个 `(Route, User Account)` request-admission token；入口
    RPM/RPD/并发属于该 request session。该范围也包括 `/v1/models`、`responses/input_tokens` 和当前返回 501 的
-   状态操作；只有生成或压缩请求会在候选估算后由同一 token 一次性 Reserve TPM。
+   状态操作；只有生成或压缩请求会在候选估算后由同一 token 一次性 Reserve TPM。Route 可分别覆盖请求层
+   RPM、RPD、TPM 与并发；`NULL` 继承对应全局默认，`0` 表示显式不限，正数作为上限。
 2. 生成或压缩请求先形成 Route/候选计划并执行一次 `SnapshotMany`，再 Reserve 请求 TPM、完成账务授权并进入
    执行。快照是整批只读线性化点；任一 control 或 identity pending、缺失、stale 会使整批失败，不创建 permit
    或预占 Channel 资源。
@@ -40,9 +42,9 @@ Provider，Provider 保存唯一 `origin`。
 4. candidate 业务拒绝发生在 attempt/transport 前，不调用该候选上游并可继续 fallback；Go/Store 错误或
    `breaker_store_unavailable` 终止执行。正常返回的业务 denial 不创建 permit 或候选资源；该保证不扩展到 Redis
    Lua 运行错误或响应结果不确定的情形。只有 rate/concurrency 的全部拒绝聚合为 429，混合或其他拒绝聚合为 503。
-5. 首 Route 候选只有在 `concurrency_limited`/`rate_limited` 时可短等一次。等待计入客户 deadline，并继续持有
-   request token、入口并发、已 Reserve TPM 与账务预授权冻结；入口 RPM/RPD 已计数但不是等待租约。重试使用
-   新 permit ID 和新读 control facts。
+5. 只有被有效 Sticky 绑定固定的首候选在 `concurrency_limited`/`rate_limited` 时可短等一次；普通评分
+   首候选和后续候选立即 fallback。等待计入客户 deadline，并继续持有 request token、入口并发、已 Reserve
+   TPM 与账务预授权冻结；入口 RPM/RPD 已计数但不是等待租约。重试使用新 permit ID 和新读 control facts。
 6. request TPM Reserve 返回 limited 时不写 TPM 桶，但会把 limited 结果固化在仍 active 的 request token 上；
    handler 返回前继续持有入口并发，随后由 Finalize 收口。输入估算为零时不会预占请求或 Channel TPM，后到的
    正数 actual TPM 也不会补记到 Channel TPM。
@@ -56,13 +58,13 @@ Provider，Provider 保存唯一 `origin`。
 - `SnapshotMany` 不预占候选资源，也不一次锁定全部 fallback 候选或强制摘除所有零容量候选。
 - 候选资源不是由调用方分步取得；当前 Store Lua 在全部门槛通过后才统一写入 permit 与资源。
 - Redis 不可用时没有退回本机限流或本机 breaker 估计的放行路径。
-- request concurrency 当前没有接入 Route override，只继承 global key concurrency limit。
 - Channel RPD 与 RPM/TPM 共用 permit TTL 派生的短 TTL，默认约 7.5 分钟，不保存完整 UTC 日历史。
 
 ## 代码与测试证据
 
 当前代码与测试已核验 request admission 接线、request session 所有权、逐候选 permit 调用位置、拒绝发生在
-attempt/transport 之前、首候选容量拒绝使用新 permit 的至多一次短等、breaker 拒绝不等待，以及非流式、
+attempt/transport 之前、Sticky 固定首候选容量拒绝使用新 permit 的至多一次短等、普通候选与 breaker 拒绝
+不等待，以及非流式、
 流式和透明 fallback 的独立 Acquire。现有 Store 与 service 测试还覆盖 active 状态同 ID 幂等、终态冲突、
 Abort/Finish、TPM Reserve、普通 revision stale、integrity epoch mismatch、pending/缺失和 Store 错误分支。
 
@@ -85,7 +87,8 @@ Abort/Finish、TPM Reserve、普通 revision stale、integrity epoch mismatch、
 ## 取代关系
 
 - 取代：无 Blueprint ADR；这是对上述来源的迁移合并记录。
-- 被取代：无。
+- 被取代：未整体取代；队首短等范围由
+  [ADR-0015](adr-0015-deterministic-cost-aware-routing.md)部分修订。
 
 ## 状态说明
 
@@ -97,3 +100,4 @@ Abort/Finish、TPM Reserve、普通 revision stale、integrity epoch mismatch、
 - [运行控制与恢复](../features/runtime-control-recovery.md)
 - [ADR-0013：Provider 运行态代际围栏](adr-0013-provider-runtime-fencing.md)
 - [ADR-0011：运行时部署边界](adr-0011-runtime-deployment-boundaries.md)
+- [ADR-0015：确定性成本感知路由与 Channel Sticky](adr-0015-deterministic-cost-aware-routing.md)

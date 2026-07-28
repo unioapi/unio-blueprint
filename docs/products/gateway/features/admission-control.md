@@ -3,7 +3,7 @@ title: 准入控制
 description: Gateway 在请求与候选两个层次取得、持有和收口运行资源的当前行为。
 status: active
 owner: 网关团队
-last_updated: 2026-07-27
+last_updated: 2026-07-28
 related:
   - ../glossary.md
   - routing-load-balancing.md
@@ -27,8 +27,8 @@ related:
 - 只有进入生成或压缩生命周期的请求才在候选输入估算完成后，一次性、幂等 Reserve 请求层 TPM。候选 fallback
   不重复 Reserve。Reserve 返回 limited 时不写 TPM 桶，但会把 limited 结果固化在仍 active 的 request token；
   handler 返回前继续持有入口并发，随后仍需 Finalize。
-- 请求层 RPM、RPD、TPM 使用 Route 的 `NULL` / `0` / 正数覆盖。当前 request concurrency 没有接入 Route
-  override，固定继承 global key concurrency limit。
+- 请求层 RPM、RPD、TPM 和并发使用 Route 的 `NULL` / `0` / 正数覆盖。并发 `NULL` 继承 global key
+  concurrency limit，`0` 表示显式不限，正数限制同一 User Account 在该 Route 上的同时在途请求数。
 - request-token renew 失败只记录日志，不取消正在执行的 handler；handler 后 Finalize 失败也只记录日志，
   不能改写已经形成的公开响应。
 
@@ -37,8 +37,8 @@ related:
 生成请求按以下顺序进入候选执行：
 
 1. 形成 Route 和候选计划。
-2. 对候选执行一次共享、只读的 `SnapshotMany`，取得运行态资格、容量和质量事实，再结合候选计划中冻结的
-   `CostRatio` 完成评分、排序和逐候选输入 token 估算。
+2. 对候选执行一次共享、只读的 `SnapshotMany`，取得运行态资格、经济、健康和容量事实，再结合冻结的
+   Priority 完成客观评分、确定性排序和逐候选输入 token 估算。
 3. 以候选计划中的保守输入估算 Reserve 请求层 TPM，再完成账务授权。
 4. 执行器按冻结候选顺序逐一尝试，在每个真实 transport 前 Acquire 新的 `AttemptPermit`。
 
@@ -67,13 +67,13 @@ identity/config 会使整批快照失败；其他不可用状态按候选过滤�
 
 ## 队首短等与 fallback
 
-“队首”是过滤、评分、排序和 sticky 置顶后的冻结候选计划首项，不是原始 SQL RouteIndex。该候选第一次
-返回 `concurrency_limited` 或 `rate_limited` 时，如果短等预算大于零且客户 deadline 允许，执行器至多等待
-一次；429 cooldown 也以 `rate_limited` 表现，因此可能进入同一短等分支。
+只有既有有效 Sticky 绑定在评分后置顶形成的首候选，第一次返回 `concurrency_limited` 或
+`rate_limited` 时，才可以在短等预算大于零且客户 deadline 允许的条件下等待一次。普通评分首候选、Sticky
+miss 和后续候选均不等待并立即 fallback；429 cooldown 也以 `rate_limited` 表现。
 
 等待期间继续持有 request token、入口并发、已 Reserve 的请求 TPM 和账务授权冻结，但不持有候选级资源。
 醒来后不重新 Snapshot、估算、排序或替换候选，只以新 permit ID 重新 Acquire，并强读相关 control revision。
-同一首候选的 primary 与透明 fallback 共享这一次短等预算。
+同一 Sticky 固定首候选的 primary 与透明 fallback 共享这一次短等预算。
 
 denied candidate 不创建 attempt、不调用该候选上游。除候选 Acquire Store 错误或
 `breaker_store_unavailable` 外，执行器继续后续候选。全部 denial 只有 rate/concurrency 原因时聚合为公开 429；
@@ -110,7 +110,11 @@ denied candidate 不创建 attempt、不调用该候选上游。除候选 Acquir
 
 ## 限额值语义
 
-Channel 层 RPM、RPD、TPM 和并发都支持 `NULL` 继承默认、`0` 不执行上限拒绝、正数作为明确上限。
+请求层 RPM、RPD、TPM 和并发都支持 Route `NULL` 继承对应全局默认、`0` 不执行上限拒绝、正数作为
+明确上限。API Key 认证取得绑定 Route 的四类覆盖值，新 request token 在 Acquire 时冻结有效值；已在途
+request token 不因 Route 后续修改而改变。
+
+Channel 层 RPM、RPD、TPM 和并发同样支持 `NULL` 继承默认、`0` 不执行上限拒绝、正数作为明确上限。
 成功 Acquire 在 `0` 配置下仍写 RPM/RPD 计数和并发 active set；TPM 只在输入估算大于零时写入。
 
 Channel 层四类限额都以 `channel_id` 为资源主体，不按 Route 拆桶。同一个 Channel 同时加入多条 Route 时，
@@ -127,7 +131,8 @@ request RPD 桶使用覆盖 UTC 日窗口的 TTL。Channel RPD 当前与 RPM/TPM
 | --- | --- |
 | 请求层真实限额命中 | 不创建候选 permit、不调用上游，公开返回 429。 |
 | `SnapshotMany` runtime-sync/pending/stale | 整批失败；尚未 Reserve 请求 TPM、授权、创建 attempt 或调用上游。 |
-| 首候选 rate/concurrency denial | 无候选资源短等至多一次，然后进入普通 fallback。 |
+| Sticky 固定首候选 rate/concurrency denial | 无候选资源短等至多一次，然后进入普通 fallback。 |
+| 普通候选 rate/concurrency denial | 不等待、不创建 attempt，立即尝试下一候选。 |
 | breaker、permission、revision 等业务 denial | 不短等、不创建 attempt；继续后续候选。 |
 | 候选 Acquire Store 故障 | 停止执行，释放账务授权并返回安全 503。 |
 | transport 已开始后配置变化 | 调用、billing 和审计继续；资源按原桶收口，breaker/TTFT 结果可能因当前配置与围栏变为 no-op。 |
@@ -149,7 +154,6 @@ expired/unknown/no-op。
 
 - Channel RPD 桶使用短 TTL，不能实现完整日窗口和 `0 -> 有限值` 的连续历史判断。
 - 输入估算为零时，后来取得的正数 actual TPM 不会补记到 Channel TPM。
-- request concurrency 尚未接入 Route override，只继承 global key limit。
 - permit Acquire 的同 ID 幂等只覆盖 active 状态；终态 tombstone 上的同 ID 重试会冲突。
 - Renew 指标把 expired、unknown permit 和 terminal conflict 记录为 `renewed`，无法证明实际续租。
 - integrity epoch 换代会阻断旧 request token 和 permit 的主动 Finalize/Finish/Abort，资源只能等待租约或 TTL。

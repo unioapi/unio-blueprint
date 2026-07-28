@@ -3,7 +3,7 @@ title: Gateway（网关）领域决策
 description: 只影响网关领域的架构决策索引。
 status: active
 owner: 网关团队
-last_updated: 2026-07-27
+last_updated: 2026-07-28
 related:
   - ../README.md
   - ../../../decisions/README.md
@@ -48,11 +48,12 @@ related:
 | [ADR-0006](adr-0006-protocol-adapter-boundary.md) | active | 公开协议、Adapter registry、原生与桥接路径的当前边界。 |
 | [ADR-0007](adr-0007-atomic-admission-control.md) | active | 请求和候选两层原子准入及当前收口限制。 |
 | [ADR-0008](adr-0008-runtime-state-fencing.md) | superseded | 历史 Provider Origin、Channel、control 与 runtime epoch 围栏。 |
-| [ADR-0009](adr-0009-objective-balanced-routing.md) | active | Balanced 候选过滤、权重、排序与准入时序。 |
+| [ADR-0009](adr-0009-objective-balanced-routing.md) | superseded | 历史 Balanced 加权随机、成本因子与准入时序。 |
 | [ADR-0010](adr-0010-upstream-breaker-attribution.md) | superseded | 历史 Origin/Channel 上游结果归因与 breaker 状态机。 |
 | [ADR-0011](adr-0011-runtime-deployment-boundaries.md) | active | 当前进程、依赖、健康探针与运行控制边界。 |
 | [ADR-0012](adr-0012-provider-channel-route-lifecycle.md) | active | Provider、Channel 与 Route 的供给关系与生命周期。 |
 | [ADR-0013](adr-0013-provider-runtime-fencing.md) | active | Provider 双 revision、Channel、control 与 runtime epoch 围栏。 |
 | [ADR-0014](adr-0014-provider-breaker-attribution.md) | active | Provider 与 Channel breaker、证据和独立反馈归因。 |
+| [ADR-0015](adr-0015-deterministic-cost-aware-routing.md) | active | 四项客观分确定性排序、Channel Sticky 与 Permit fallback。 |
 
 新建时使用 [ADR 模板](../../../templates/adr.md)。

@@ -3,12 +3,13 @@ title: 运营可观测性
 description: 管理后台以客观事实支持运行判断和经营分析的设计。
 status: draft
 owner: 管理后台团队
-last_updated: 2026-07-27
+last_updated: 2026-07-28
 related:
   - ../overview.md
   - ../quality.md
   - ../pages/operations-dashboard.md
   - ../decisions/adr-0001-objective-operational-facts.md
+  - ../../gateway/decisions/adr-0015-deterministic-cost-aware-routing.md
 ---
 
 # 功能设计：运营可观测性
@@ -39,9 +40,11 @@ related:
 
 - Provider、Channel、模型、线路和 Dashboard 并列展示客观事实：Provider 双 revision 与 breaker、凭据状态、
   主动检测、eligible 错误率与样本、Channel 路由 TTFT EWMA、流式请求客户首帧 TTFT、attempt 上游 TTFT、
-  流式/非流式总耗时、容量与临时超限、运行态同步、最终权重和实际分流。
+  流式/非流式总耗时、容量与临时超限、运行态同步、经济/健康/容量/Priority 四项分数、最终得分和实际分流。
 - 当前“可服务/不可服务/基础设施故障”只能由当前硬门禁和运行态 readiness 直接推导；基础设施故障必须明确表示准入已拒绝，并与无样本区分。
-- Channel 路由 EWMA 只使用流式 attempt 中协议定义的 `FirstTokenEligible` 样本；请求级 TTFT 使用首个客户写帧，attempt 上游 TTFT 使用真实 transport 起点。三者不得合并，非流式只显示总耗时。stale 版本不得展示旧的 open、Channel TTFT 或权重。
+- Channel 路由 EWMA 只使用流式 attempt 中协议定义的 `FirstTokenEligible` 样本；请求级 TTFT 使用首个客户写帧，attempt 上游 TTFT 使用真实 transport 起点。三者不得合并，非流式只显示总耗时。stale 版本不得展示旧的 open、Channel TTFT 或评分。
+- 系统设置展示经济、健康、容量与 Priority 四项整数百分比，实时显示合计；合计不为 100 时禁止保存。
+  Route runtime 同时展示算法版本、四项分数、四项权重和最终得分；旧 trace 缺字段时保留旧视图。
 - 首页为决策层，仅显示 8 项 KPI、本期与上期同长度窗口比较和状态 Banner；不放逐项明细、排行榜或 Token 拆解。
 - 金额按币种拆卡；利润率只在同币种内计算；缓存贡献是反事实估算，必须标为“估算”。
 - 二级分析中心和实时监控页使用独立视图与数据源。实时 QPS、TPS、RPM、TPM、P99 和错误率不得伪装为数据库经营聚合。
@@ -56,9 +59,9 @@ Provider 列表不逐行读取 Redis 运行态，详细运行态属于 Provider 
 | 状态或条件 | 预期行为 | 恢复方式 |
 | --- | --- | --- |
 | Channel 无路由 TTFT 样本 | 不显示或明确 `ttft_samples=0`；合法 0ms 样本仍有正样本数 | 等待真实流式 attempt 经 permit `Finish` 应用。 |
-| Channel 当前配置尚无运行身份 | 按无样本展示；runtime Channel revision 为空不视为版本不一致，不隐藏当前容量与权重 | 首次真实请求取得 permit 时延迟建立运行身份。 |
+| Channel 当前配置尚无运行身份 | 按无样本展示；runtime Channel revision 为空不视为版本不一致，不隐藏当前容量与评分 | 首次真实请求取得 permit 时延迟建立运行身份。 |
 | 运行态基础设施故障 | 显示准入已拒绝，不回退为“健康”或无样本 | 运行态恢复与对账后重新观察。 |
-| 配置版本 stale | 不展示旧 breaker、Channel TTFT 或权重 | 等待当前版本事实。 |
+| 配置版本 stale | 不展示旧 breaker、Channel TTFT 或评分 | 等待当前版本事实。 |
 | 多币种金额 | 分币种展示，不计算总和 | 在币种内查看金额与比率。 |
 | 缓存贡献 | 作为估算展示 | 不并入账本利润。 |
 
@@ -72,3 +75,4 @@ Provider 列表不逐行读取 Redis 运行态，详细运行态属于 Provider 
 - [ ] 当前可服务性、基础设施故障和无样本在页面上可区分。
 - [ ] 首页不跨币种相加，缓存贡献标为估算。
 - [ ] 请求客户首帧、attempt 上游 TTFT 与 Channel 路由 EWMA 分别标明口径；非流式不展示伪造的 TTFT，stale 版本不展示旧运行态事实。
+- [ ] 四项评分、权重合计、最终得分和实际分流可区分；旧 trace 不伪造缺失的新评分字段。

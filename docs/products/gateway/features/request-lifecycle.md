@@ -3,7 +3,7 @@ title: Gateway 请求生命周期
 description: 请求从身份确认到协议交付、结算与恢复的当前行为。
 status: active
 owner: 网关团队
-last_updated: 2026-07-26
+last_updated: 2026-07-28
 related:
   - ../README.md
   - ../glossary.md
@@ -32,12 +32,14 @@ Schema 和测试能够共同证明的行为。
    校验并进入 service 后，才另行创建 `req_` 持久业务请求 ID；HTTP correlation ID 不替代这两个标识。
 2. 对生成或压缩请求，按入口协议和客户模型形成候选计划，过滤不支持当前 Endpoint 或传输方式的 Adapter，以及
    缺少 Channel-Model 映射的候选；模型能力声明当前不是运行时准入闸门。
-3. 对候选执行一次只读 `SnapshotMany`，取得运行态资格和容量、质量事实，再结合候选计划中冻结的成本因子
-   排序并逐候选估算输入 token。快照不预占候选资源；runtime-sync/pending/stale identity/config 会使整批失败。
+3. 对候选执行一次只读 `SnapshotMany`，取得运行态资格、经济、健康和容量事实，再结合冻结的 Priority
+   计算客观分并确定性排序，然后逐候选估算输入 token。快照不预占候选资源；runtime-sync/pending/stale
+   identity/config 会使整批失败。
 4. 以候选计划中的最大保守输入估算一次性 Reserve 请求层 TPM，再根据输出上限完成账务授权。余额不大于零
    时不调用上游；余额大于零但不足估算金额时冻结全部剩余可用余额并继续调用。
 5. 按候选顺序执行。每个真实 transport 前取得新的 `AttemptPermit`，permit 成功后才创建 attempt；denied
-   candidate 不创建 attempt、不调用该候选上游。除候选 Acquire 的 Store 类故障外，执行器继续后续候选。
+   candidate 不创建 attempt、不调用该候选上游。普通容量拒绝立即 fallback；只有 Sticky 固定首候选可短等
+   一次。除候选 Acquire 的 Store 类故障外，执行器继续后续候选。
 6. Adapter 对一个 attempt 发起一次真实调用并生成协议响应和 `ResponseFacts`。首个客户帧成功写出前可按稳定
    错误类别 fallback；成功写出后不再切换候选。
 7. 取得可结算事实后，recoverable settlement 先校验事实并创建 pending recovery job，再尝试内联结算。

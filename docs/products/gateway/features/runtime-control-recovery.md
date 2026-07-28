@@ -3,7 +3,7 @@ title: 运行控制与恢复
 description: Gateway 的 Provider 双 revision、Channel 控制、运行态代际围栏和故障恢复当前行为。
 status: active
 owner: 网关团队
-last_updated: 2026-07-27
+last_updated: 2026-07-28
 related:
   - ../glossary.md
   - admission-control.md
@@ -60,6 +60,12 @@ Provider 地址和状态的 revision、pending 与 fence 互相独立；普通 P
 Prepare 或数据库提交前失败可以 Abort；db_committed 后只能恢复 Commit。Reconciler 以 PostgreSQL operation 和
 当前业务行重建规范 payload，任何 hash、pending、目标或业务事实冲突都停止恢复并保持 fail closed。
 
+Gateway 与 Admin 的首次启动协调运行在停机重启模型下：先收口 PostgreSQL 中未终结的 durable operation，再以
+PostgreSQL 当前稳定事实为权威，原子重建缺失或漂移的关键 app setting 与 Channel admission control。启动重建
+会覆盖 Redis 中落后、超前、payload 不同或残留 pending 的单个 control，并清除该 control 的 pending 字段；
+不会清除独立的限流桶、并发租约、request token、Sticky、breaker 或其他运行态 key。进程启动后的周期
+Reconciler 不使用权威覆盖，仍只补缺失并严格拒绝已有冲突，避免干扰运行中的 Admin 发布。
+
 ## Provider 路由事实发布
 
 Provider origin 与 status 使用独立 `provider_routing_operations`，kind 只允许 `origin` 或 `status`：
@@ -67,8 +73,9 @@ Provider origin 与 status 使用独立 `provider_routing_operations`，kind 只
 - 单次操作锁定 Provider 与 operation，不存在 Origin ID 扇出、批量 status 或 combined 更新。
 - origin/status 分别推进对应 revision 与 fence；一个操作不改另一条 revision。
 - 未提交操作恢复 aborted，db_committed 操作只恢复 committed。
-- Provider Redis control 完全缺失时，Reconciler 可以在锁定完整 PostgreSQL 事实后重建；已存在但 revision、
-  pending、payload 或业务事实不一致时不得覆盖。
+- 首次启动协调在收口未终结 Provider operation 后，以 PostgreSQL 当前双 revision 和 status 校正 Redis Provider
+  control。正常 Hash 只改控制字段、清除 pending 并推进 fence generation，保留 breaker 窗口与状态；错误类型
+  的单个 Provider key 会重建。周期 Reconciler 仍只补缺失，已存在冲突不会被运行期覆盖。
 - 地址正文不进入 revision transition 摘要，durable payload hash 仍绑定规范化完整目标。
 
 Provider 归档遇非终态 operation 返回 conflict，不自动 Abort 或接管。归档后清除已终态 operation 的 Redis
@@ -99,6 +106,8 @@ Finish/Abort 在 epoch 匹配时先按 permit 固化身份收口资源，再根�
 epoch 保存随机身份、单调 revision 和 recovering/ready 状态，reason 为 bootstrap、state_loss 或 restore。
 
 - 首次 bootstrap 建立 durable operation，经 Redis pending、PostgreSQL db_committed、Redis Commit 后自动 ready。
+- PostgreSQL 已是 ready 且没有未终结 epoch operation 时，Gateway 启动会按 DB 当前 epoch/revision 原子重建
+  缺失或不匹配的 Redis marker；不会清除其他 Redis 运行态 key。
 - state loss/restore 只能由 maintenance 命令开始，要求明确确认入口阻断、运行态丢失和合法 recovery 身份。
 - Commit 需要入口阻断、在途排空、等待窗口、breaker/cooldown、permission、control、离线脚本和 maintenance
   probe 的限时摘要证据；随后进入 awaiting_release。
@@ -143,9 +152,10 @@ mismatch、Finish disposition 和凭据检测摘要。
 
 ## 代码与测试证据
 
-当前测试覆盖普通 control、Provider origin/status publisher/reconciler、缺失 control 恢复、state epoch bootstrap、
-响应丢失、maintenance evidence、awaiting release、readiness、401、凭据 CAS、permission recheck、归档分层
-purge、完整状态丢失和长流 revision fence。
+当前测试覆盖普通 control、Provider origin/status publisher/reconciler、启动时 DB 权威修复高低 revision、payload
+漂移、pending、错误 key 类型和 ready marker 丢失，周期严格协调不覆盖冲突，以及 state epoch bootstrap、响应
+丢失、maintenance evidence、awaiting release、readiness、401、凭据 CAS、permission recheck、归档分层 purge、
+完整状态丢失和长流 revision fence。
 
 ## 相关决策
 

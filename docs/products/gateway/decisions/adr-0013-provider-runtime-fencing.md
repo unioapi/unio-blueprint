@@ -3,7 +3,7 @@ title: "ADR-0013：Provider 运行态代际围栏"
 description: "以 Provider 的独立 origin/status revision、Channel revision 与整体运行态代际隔离迟到结果。"
 status: active
 owner: 网关团队
-last_updated: 2026-07-27
+last_updated: 2026-07-28
 related:
   - ../features/runtime-control-recovery.md
   - ../features/data-lifecycle.md
@@ -77,8 +77,10 @@ control 继续维护各自 revision，permit 固化本次调用需要的全部�
    资源依赖租约或 TTL 回收。
 8. Provider 归档立即清理 breaker、cooldown、control、permission 和 evidence，阻止新准入；不得清理在途
    permit、并发租约和计数桶。归档后迟到的运行反馈为 stale/no-op，但资源必须完成收口。
-9. Reconciler 只以 PostgreSQL 当前 Provider/Channel/control 事实和 durable operation 恢复缺失 Redis 状态。
-   已存在状态若 revision、pending、payload hash 或业务事实冲突，停止恢复并保持 fail closed。
+9. 启动 Reconciler 先收口 PostgreSQL durable operation，再以 PostgreSQL 当前 Provider/Channel/control 稳定事实
+   为权威修复缺失或漂移的 Redis control；Provider 正常 Hash 保留 breaker 状态，只校正双 revision、status、
+   pending 与 fence。运行期周期 Reconciler 仍只补缺失；已存在状态若 revision、pending、payload hash 或业务
+   事实冲突，停止恢复并保持 fail closed。
 10. readiness 核验 Provider routing operation、关键 control、runtime epoch、Redis server identity、完整对账
     proof 与故障锁；普通健康探针不创建或修复运行态。
 
@@ -106,7 +108,7 @@ control 继续维护各自 revision，permit 固化本次调用需要的全部�
 | --- | --- | --- |
 | 地址和状态 pending 被错误合并 | operation kind、revision 和 Redis pending 分开建模并覆盖交错操作测试 | 网关团队 |
 | 归档误删在途资源 | purge 按立即阻断事实与 permit 绑定资源分层，覆盖长流和异常 TTL 测试 | 网关团队 |
-| Redis 恢复覆盖冲突事实 | 仅恢复完全缺失状态；存在冲突即保持 fail closed | 网关团队 |
+| 启动修复误清业务运行态 | 只重建目标 control/marker；Provider 正常 Hash 保留 breaker，其他资源使用独立 key | 网关团队 |
 
 ## 落地与验证
 
@@ -124,4 +126,3 @@ control 继续维护各自 revision，permit 固化本次调用需要的全部�
 - [运行控制与恢复](../features/runtime-control-recovery.md)
 - [准入控制](../features/admission-control.md)
 - [数据生命周期](../features/data-lifecycle.md)
-

@@ -3,7 +3,7 @@ title: "ADR-0011：运行时部署边界"
 description: "记录 Gateway 当前进程、PostgreSQL、Redis、健康探针与运行控制边界。"
 status: active
 owner: 网关团队
-last_updated: 2026-07-27
+last_updated: 2026-07-28
 related:
   - ../features/admission-control.md
   - ../features/runtime-control-recovery.md
@@ -36,10 +36,13 @@ related:
 5. Gateway、常驻 Worker 和 maintenance CLI 调用 `VerifySingleNodeDeployment`；Gateway 与常驻 Worker 还调用
    BreakerStore `Ping`。Admin 不调用这两项检查。生产 Admin 入口仍要求 PostgreSQL 与 Redis client 成功打开。
    `worker-server sync-models` 只连接 PostgreSQL。
-6. Gateway 启动时确保 runtime state epoch，开始一次全量 reconciliation，依次处理 Provider、普通
-   runtime operation、五项关键 app setting 与全部 Channel admission control，并提交 instance reconciliation
-   proof。启动期任一步返回错误都会使装配返回错误；运行期后台 reconciler 每 5 秒重复同一流程。
-7. Admin 在 PostgreSQL pool 和非 nil Redis client 下执行一次并周期执行 control reconciliation，但不执行
+6. Gateway 启动时确保 runtime state epoch，开始一次全量 reconciliation，先收口 Provider 与普通 durable
+   operation，再以 PostgreSQL 当前稳定事实为权威修复 Provider、五项关键 app setting 与全部 Channel
+   admission control，最后提交 instance reconciliation proof。启动修复只重建对应 control/marker，不清限流桶、
+   并发租约、request token、Sticky 或 breaker；任一步返回错误仍使装配失败。运行期后台 reconciler 每 5 秒
+   使用严格模式，只补缺失且不覆盖已有冲突。
+7. Admin 在 PostgreSQL pool 和非 nil Redis client 下以同样的 DB 权威模式执行一次启动 control
+   reconciliation，之后周期协调切回严格模式；Admin 不执行
    state epoch ensure、`BeginRuntimeReconciliation`、instance proof 提交或 fault latch 清除。Admin bootstrap
    接受 nil Redis；该路径下普通 settings 使用 PostgreSQL/default 与本地缓存，不装配 runtime-control
    publisher/fencer。常驻 Worker 不运行 control reconciler。maintenance CLI 只编排 state epoch 的

@@ -3,7 +3,7 @@ title: Gateway（网关）概览
 description: 网关当前公开入口、身份、线路、供给与账务边界。
 status: active
 owner: 网关团队
-last_updated: 2026-07-27
+last_updated: 2026-07-28
 related:
   - README.md
   - glossary.md
@@ -45,7 +45,8 @@ Provider 适配、上游调用、用量记录和结算。
 1. API Key 认证解析 User Account 与显式绑定 Route。
 2. Route 限定模型可见范围、客户定价和候选 Channel 池。
 3. 候选按 ingress protocol、Adapter operation capability、模型映射、凭据、状态、价格和运行态过滤。
-4. `fixed` Route 只接受恰好一个 Channel 的候选池；`balanced` Route 在池内生成加权 fallback 顺序。
+4. `fixed` Route 只接受恰好一个 Channel 的候选池；`balanced` Route 按经济、健康、容量和 Priority
+   客观分在池内生成确定性 fallback 顺序。
 5. 每个真实 transport 前取得独立 `AttemptPermit`，并在调用后按实际结果记录 attempt、usage、运行态反馈和
    账务事实。
 6. fallback 不改变本次请求锁定的 Route 或客户价格。
