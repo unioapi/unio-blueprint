@@ -3,7 +3,7 @@ title: Gateway 错误语义
 description: Gateway 的当前内部分类、fallback、协议错误包络与敏感信息边界。
 status: active
 owner: 网关团队
-last_updated: 2026-07-27
+last_updated: 2026-07-29
 related:
   - ../README.md
   - public-api-contracts.md
@@ -65,6 +65,11 @@ Adapter 当前使用以下稳定类别：`rate_limit`、`timeout`、`bad_request
 OpenAI Chat、OpenAI Responses 与 Anthropic Messages 各自把同一上游类别渲染成协议原生错误类型和安全
 文案；HTTP 状态映射保持上表一致。
 
+OpenAI Responses 原生流中的 `response.failed` 或 `error` 事件会按稳定错误 code 分类。`rate_limit`、
+`rate_limit_error` 和 `rate_limit_exceeded` 归为上游 `rate_limit`，即使该 SSE transport 的真实 HTTP 状态是
+200；内部仍记录上游状态类 failure code 与真实 HTTP metadata，不改写为 Gateway 自身的请求级或候选准入
+限流。该错误可以切换同模型候选，并在 permit Finish 确认后为实际 Channel 写入 cooldown。
+
 ## 候选拒绝与错误收口
 
 一次请求的候选循环会分别遇到候选准入拒绝和已调用上游后的错误。当前收口规则如下：
@@ -99,6 +104,7 @@ Gateway 只在能够从以下事实证明恢复时间时返回 `Retry-After`：
 | 客户取消 | 终止当前流，不切换候选。 |
 | Gateway 生成成功终态前结算或 recovery 建立失败 | 省略成功终态并写流式错误。 |
 | 原生 Responses 已收到 `response.completed` | 该事件当前先透传；随后 settlement 或 recovery 失败不能撤回已交付的成功终态。 |
+| 原生 Responses 收到内联 rate limit 失败事件 | 保留已提交的 HTTP 状态，按上游 `rate_limit` 收口并反馈实际 Channel cooldown，不作为 Gateway 本地限流。 |
 
 Chat 流不会在已开流后写普通 JSON 错误；Messages 使用 Anthropic `error` 事件；Responses 使用受控的
 Responses error 事件。流式错误不附带 Provider 原始响应正文。

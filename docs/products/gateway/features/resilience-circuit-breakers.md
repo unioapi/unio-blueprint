@@ -3,7 +3,7 @@ title: 韧性与熔断器
 description: Gateway 对真实上游故障按 Provider 与 Channel 归因、隔离、恢复和解释的当前行为。
 status: active
 owner: 网关团队
-last_updated: 2026-07-27
+last_updated: 2026-07-29
 related:
   - ../glossary.md
   - admission-control.md
@@ -59,7 +59,7 @@ level 和 half-open lease。默认 control 使用：
 | 明确协议解码、非法响应或 stream 读取失败 | eligible failure | 通常 ignored | 无 |
 | 401 | ignored | ignored | 连续凭据闸门 |
 | 403 | ignored | ignored | Channel-Model permission pause |
-| 429 | ignored | ignored | Channel cooldown |
+| 上游 rate limit（HTTP 429 或 Responses SSE 内联失败） | ignored | ignored | Channel cooldown |
 | 其他 4xx、客户取消、未分类本地错误 | ignored | ignored | 按业务路径收口 |
 | transport 前失败 | Abort，不形成 breaker 结果 | Abort，不形成 breaker 结果 | 释放 permit 资源 |
 
@@ -83,7 +83,8 @@ Channel config revision、两层 breaker generation、half-open 权利、模型�
 
 - 连续 401 key 绑定 Channel ID、Channel config revision 与 Provider 双 revision；当前 revision 的成功清零，
   达到阈值后以 PostgreSQL CAS 将凭据置 invalid。
-- 429 cooldown 取 `Retry-After` 或当前默认值，按 Channel 保存；Provider/Channel breaker reset 都不清除它。
+- 上游 rate limit cooldown 取 `Retry-After` 或当前默认值，按 Channel 保存；Responses SSE 内联失败即使 transport
+  HTTP 状态为 200，也按错误 code 进入同一反馈。Provider/Channel breaker reset 都不清除 cooldown。
 - 403 permission pause 固化 Channel、Model、Channel config revision 与 Provider 双 revision，只通过精确复检恢复。
 
 这些反馈只在 permit Finish 已确认后写入。写入 Store 失败终止普通 fallback，避免在反馈状态未知时继续调用。

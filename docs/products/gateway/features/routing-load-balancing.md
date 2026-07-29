@@ -3,7 +3,7 @@ title: 路由负载均衡（客观评分）
 description: Gateway 当前 Balanced 候选客观评分、确定性排序、Channel Sticky 与逐候选准入行为。
 status: active
 owner: 网关团队
-last_updated: 2026-07-28
+last_updated: 2026-07-29
 related:
   - ../overview.md
   - ../glossary.md
@@ -78,13 +78,16 @@ Sticky 不参与评分，而是在客观排序后处理已有绑定：
 | `sticky_enabled = true` | 开启，并要求该 Channel 的 `sticky_ttl_ms > 0`。 |
 | `sticky_enabled = false` | 关闭，且 Channel 不接受自定义 TTL。 |
 
-系统默认开启 Sticky，TTL 为 30 分钟。绑定年龄不因普通命中而刷新；到期后回到客观评分首选。`fixed` Route、
-缺少会话信号或成功 Channel 禁用 Sticky 时不建立新绑定。旧绑定对应 Channel 被硬摘除或禁用 Sticky 时清除；
-临时容量拒绝不清绑定，fallback 成功后按胜出 Channel 的策略决定改绑或清除。
+系统默认开启 Sticky，TTL 为 30 分钟。普通命中和失败请求不续期；同一绑定 Channel 成功后把最近成功时间和
+物理 TTL 一并滑动到完整配置时长。活跃且持续成功的会话没有额外绝对绑定上限，空闲满 TTL 后回到客观评分
+首选。`fixed` Route、缺少会话信号或成功 Channel 禁用 Sticky 时不建立新绑定。旧绑定对应 Channel 被硬摘除或
+禁用 Sticky 时清除；临时容量拒绝不清绑定，fallback 成功后按胜出 Channel 的策略决定改绑或清除。迟到的旧
+Channel 成功只有在 Redis 当前仍绑定该 Channel 时才能续期，不能覆盖或续活已经 failover 的新绑定。
 
-Redis v2 绑定保存 `channel_id` 与 `bound_at_ms`。Channel 开关或 TTL 热更新在绑定下一次读取时惰性生效；
-旧整数绑定在访问时比较后升级并继续服务，不要求清空 Redis。只有被有效 Sticky 绑定置顶的首候选在
-`concurrency_limited` 或 `rate_limited` 时可按全局预算短等一次；普通评分首候选和后续候选不等待。
+Redis v3 绑定保存 `channel_id` 与 `last_success_at_ms`。Channel 开关或 TTL 热更新在绑定下一次读取时惰性生效；
+旧整数值和 v2 `bound_at_ms` 值在访问时通过比较写升级为 v3，并保留原物理 TTL，不要求清空 Redis。只有被有效
+Sticky 绑定置顶的首候选在 `concurrency_limited` 或 `rate_limited` 时可按全局预算短等一次；普通评分首候选和
+后续候选不等待。
 
 ## 运行设置
 
