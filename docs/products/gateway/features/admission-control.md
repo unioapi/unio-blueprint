@@ -3,7 +3,7 @@ title: 准入控制
 description: Gateway 在请求与候选两个层次取得、持有和收口运行资源的当前行为。
 status: active
 owner: 网关团队
-last_updated: 2026-07-28
+last_updated: 2026-07-29
 related:
   - ../glossary.md
   - routing-load-balancing.md
@@ -24,7 +24,7 @@ related:
 
 - request token 在 API Key 认证后取得一次，入口 RPM、RPD 与并发在 Acquire 时处理；候选 fallback 不重复
   Acquire。handler 返回后，同一 request session 停止 renewer 并唯一 Finalize。
-- 只有进入生成或压缩生命周期的请求才在候选输入估算完成后，一次性、幂等 Reserve 请求层 TPM。候选 fallback
+- 只有进入生成或压缩生命周期的请求才在候选预算完成后，一次性、幂等 Reserve 请求层 TPM。候选 fallback
   不重复 Reserve。Reserve 返回 limited 时不写 TPM 桶，但会把 limited 结果固化在仍 active 的 request token；
   handler 返回前继续持有入口并发，随后仍需 Finalize。
 - 请求层 RPM、RPD、TPM 和并发使用 Route 的 `NULL` / `0` / 正数覆盖。并发 `NULL` 继承 global key
@@ -39,18 +39,79 @@ related:
 1. 形成 Route 和候选计划。
 2. 对候选执行一次共享、只读的 `SnapshotMany`，取得运行态资格、经济、健康和容量事实，再结合冻结的
    Priority 完成客观评分、确定性排序和逐候选输入 token 估算。
-3. 以候选计划中的保守输入估算 Reserve 请求层 TPM，再完成账务授权。
+3. 为每个候选计算输入估算和输出预算，形成 `input_estimate + output_budget = candidate_budget`；以所有可用候选
+   的最大 `candidate_budget` 一次性 Reserve 请求层 TPM，再完成账务授权。
 4. 执行器按冻结候选顺序逐一尝试，在每个真实 transport 前 Acquire 新的 `AttemptPermit`。
 
 `SnapshotMany` 不创建 permit，也不预占 Channel 并发、RPM、RPD 或 TPM。runtime-sync/pending/stale
 identity/config 会使整批快照失败；其他不可用状态按候选过滤。快照容量为零不会统一在评分前摘除候选，
 排序结果也不是资源取得证明。
 
+## 基础设施与指标链路
+
+PostgreSQL 保存 User、Route、Channel、Provider、模型映射、限额和审计记录；Redis 执行实时准入、预占、释放
+和终态记录。Route 记录一次客户逻辑请求，Channel 记录每次具体上游 attempt。两层的 RPM、RPD、TPM 和并发
+分别按自己的资源主体运行，不通过前端求和制造等式。
+
+```mermaid
+flowchart TD
+    Client[客户请求] --> Auth[API Key 认证]
+    PGConfig[(PostgreSQL 持久配置)] -->|User、Route、限额、版本| Auth
+    Auth --> RA[Route 请求准入]
+    RA --> RR[(Redis Route/User 资源)]
+    RR -->|原子检查| RGate{RPM、RPD、并发是否够用?}
+    RGate -->|否| Reject[429 拒绝\n不创建 Channel attempt]
+    RGate -->|是| RHold[Route RPM +1\nRoute RPD +1\n取得 Route 并发租约]
+
+    RHold --> PGRequest[(PostgreSQL request_records\n客户请求审计)]
+    PGConfig -->|Route-Channel、Provider、模型映射| Plan[候选计划]
+    PGRequest --> Plan
+    Plan --> Estimate[逐候选计算 input_estimate + output_budget]
+    Estimate -->|取所有候选总预算最大值，只做一次| RTPM[(Redis Route/User TPM 预占)]
+    RTPM --> Cand[按顺序尝试候选 Channel]
+
+    Cand --> Acquire[Channel AttemptPermit]
+    PGConfig -->|Channel 限额和当前版本| Acquire
+    Acquire --> CR[(Redis Channel 全局资源)]
+    CR -->|原子检查并预占| CHold[Channel RPM +1\nChannel RPD +1\n候选自己的 TPM 预算\n取得 Channel 并发租约]
+    CHold --> PGAttempt[(PostgreSQL request_attempts\n当前候选审计)]
+    PGAttempt --> Build[本地编码、建请求]
+    Build -->|本地失败| Abort[Abort]
+    Build -->|进入 HTTP 客户端| Transport[连接并发送上游请求]
+    Transport --> Evidence{上游交互证据}
+    Evidence -->|确认请求未写出| Abort
+    Abort --> Release[Redis 释放本候选\nRPM/RPD/TPM/并发]
+    Release --> PGFail[PostgreSQL attempt 记失败]
+    PGFail -->|允许 fallback| Cand
+
+    Evidence -->|已写完、已收响应头或结果不确定| Finish[Finish attempt]
+    Evidence -->|出现协议有效首字| Finish
+    Finish --> Keep[Redis 保留 Channel RPM/RPD\n写 Route-Channel attempt 归因\nTPM 按 usage、本地计量或输入保底对账\n释放 Channel 并发]
+    Keep --> Result{业务结果}
+    Result -->|失败且允许 fallback| PGFail
+    Result -->|成功| Settle[PostgreSQL 写 usage、结算和请求/attempt 终态]
+    Settle --> Done[向客户交付]
+
+    Done --> Finalize[Request Finalize]
+    Finalize --> RFinal[Redis 释放 Route 并发\nRoute TPM 对账\n保留 Route RPM/RPD 入口记录]
+    RFinal --> PGFinal[PostgreSQL request 终态]
+
+    CR -.-> RPDTTL[Channel RPD 到 UTC 次日零点\n再加终态和恢复缓冲后过期]
+    RR -.-> Admin[Admin 汇总 Route 全部用户桶]
+    CR -.-> AdminChannel[Admin 读取 Channel 全局容量]
+    Keep -.-> AdminRouteChannel[Admin 读取当前 Route 的 Channel attempt 归因]
+    PGConfig -.-> Admin
+```
+
+图中的“上游交互证据”不是错误字符串，而是结构化事实：请求是否完整写出、是否拿到响应头、是否出现协议定义
+的有效首字。只有证据能够确认请求未写出时，才释放 Channel RPM/RPD/TPM 预占；无法确定时按保守规则保留
+可能已经产生的上游消耗。
+
 ## AttemptPermit Acquire
 
 候选 Acquire 在一个 Redis 原子操作中检查：
 
-- request token 仍为 active，且已经按本次相同输入估算 Reserve；
+- request token 仍为 active，且已经按不小于当前候选预算 Reserve；
 - runtime integrity epoch/revision；
 - Provider origin/status control、双 revision 与 fence，以及 Channel 对 Provider 身份的绑定；
 - ChannelRate、GlobalConcurrency、CircuitBreaker 和 ChannelAdmission control 的当前 committed revision；
@@ -81,12 +142,13 @@ denied candidate 不创建 attempt、不调用该候选上游。除候选 Acquir
 
 ## 资源终结
 
-- Abort 用于 permit 成功但真实 transport 尚未开始的路径，归还候选 RPM、RPD、TPM、并发和 half-open 租约，
+- Abort 用于 permit 成功但明确没有写出请求的路径，归还候选 RPM、RPD、TPM、并发和 half-open 租约，
   不写 breaker 成功或失败样本。
-- Finish 用于真实 transport 已开始的路径，保留已发生的 RPM/RPD，释放并发和 half-open；原估算大于零时，
-  按权威 usage 对账 Channel TPM，没有权威 usage 时释放原 TPM 估算。
-- `EstimatedInputTokens=0` 时 Acquire 不创建 Channel TPM 预占，Finish 也不会把后来取得的正数 actual TPM
-  补记到 Channel TPM，这是当前实现边界。
+- Finish 用于请求已经完整写出、收到响应头或产生有效首字的路径，保留有上游交互证据的 Channel RPM/RPD，
+  释放并发和 half-open；TPM 优先按权威 usage 对账，没有权威 usage 时至少保留输入估算，有本地输出计量时保留
+  输入加本地输出。
+- permit 固化 `route_id` 和 `route_channel_rpd_bucket`。Finish 只在有上游交互证据时将一次 attempt 写入该
+  Route-Channel UTC 日归因桶；它不替代按 `channel_id` 统计的全局 Channel RPD 容量桶。
 - 限额资源按 permit 固化的原始桶身份收口。Finish 不重新校验签发时的 ChannelRate、GlobalConcurrency、
   ChannelAdmission 或 CircuitBreaker revision，而使用当前 committed breaker 配置推进 breaker；流式 TTFT 使用
   当前 committed routing-balance 参数。Provider/Channel 围栏变化可使 breaker/TTFT 写入成为 stale/no-op，
@@ -115,15 +177,16 @@ denied candidate 不创建 attempt、不调用该候选上游。除候选 Acquir
 request token 不因 Route 后续修改而改变。
 
 Channel 层 RPM、RPD、TPM 和并发同样支持 `NULL` 继承默认、`0` 不执行上限拒绝、正数作为明确上限。
-成功 Acquire 在 `0` 配置下仍写 RPM/RPD 计数和并发 active set；TPM 只在输入估算大于零时写入。
+成功 Acquire 在 `0` 配置下仍写 RPM/RPD 计数和并发 active set；TPM 在候选完整预算大于零时写入。
 
-Channel 层四类限额都以 `channel_id` 为资源主体，不按 Route 拆桶。同一个 Channel 同时加入多条 Route 时，
-来自这些 Route 的 attempt 共同消耗该 Channel 的 RPM、RPD、TPM 和并发额度。请求层限额与此独立，仍按
-`(Route, User Account)` 计数，因此不同 Route 不共享同一个请求层桶。
+Channel 层硬限额都以 `channel_id` 为资源主体，不按 Route 拆桶。同一个 Channel 同时加入多条 Route 时，来自
+这些 Route 的 attempt 共同消耗该 Channel 的 RPM、RPD、TPM 和并发额度。另有只读的
+`(route, channel, UTC day)` attempt 归因桶用于当前 Route 的 Admin 行展示；它不参与全局 Channel 容量判断。
+请求层限额与此独立，仍按 `(Route, User Account)` 计数，因此不同 Route 不共享同一个请求层桶。
 
-request RPD 桶使用覆盖 UTC 日窗口的 TTL。Channel RPD 当前与 RPM/TPM 共用由 permit TTL 派生的短 TTL，
-默认约 7.5 分钟；同一 UTC 日内如果计数器静默过期，RPD 会从零重新开始。因此 Channel RPD 不能保证
-完整日历史，`0` 改为有限值后也不能保证按此前完整日用量判断。
+request RPD、Channel 全局 RPD 和 Route-Channel attempt 归因桶都按 UTC 日编号，并使用覆盖完整日窗口及
+permit 终态缓冲的 TTL。Channel 全局 RPD 原始桶在 active permit 生命周期中意外丢失时，Finish/Abort/Renew
+不会静默放行或释放，而是返回 runtime-sync-required。
 
 ## 状态与边界情况
 
@@ -137,7 +200,7 @@ request RPD 桶使用覆盖 UTC 日窗口的 TTL。Channel RPD 当前与 RPM/TPM
 | 候选 Acquire Store 故障 | 停止执行，释放账务授权并返回安全 503。 |
 | transport 已开始后配置变化 | 调用、billing 和审计继续；资源按原桶收口，breaker/TTFT 结果可能因当前配置与围栏变为 no-op。 |
 | transport 或 handler 结束前 integrity epoch 换代 | Finish/Abort/Finalize 在 Redis 调用前失败；调用结果仍按业务路径处理，运行资源依赖租约/TTL 过期。 |
-| `0` 改为有限值 | 新 Acquire 应用新门槛；Channel RPD 短 TTL 不保留此前完整 UTC 日计数。 |
+| `0` 改为有限值 | 新 Acquire 应用新门槛；Channel 全局 RPD 日桶继续保留完整 UTC 日计数。 |
 
 ## 数据、安全与可观测性
 
@@ -152,8 +215,8 @@ expired/unknown/no-op。
 
 ## 当前边界事实
 
-- Channel RPD 桶使用短 TTL，不能实现完整日窗口和 `0 -> 有限值` 的连续历史判断。
-- 输入估算为零时，后来取得的正数 actual TPM 不会补记到 Channel TPM。
+- Redis 状态丢失后的当日 RPD 是否从 PostgreSQL 重建尚未纳入本次开发环境改造；恢复前仍按现有 Redis
+  runtime fault 的 fail-closed 规则处理。
 - permit Acquire 的同 ID 幂等只覆盖 active 状态；终态 tombstone 上的同 ID 重试会冲突。
 - Renew 指标把 expired、unknown permit 和 terminal conflict 记录为 `renewed`，无法证明实际续租。
 - integrity epoch 换代会阻断旧 request token 和 permit 的主动 Finalize/Finish/Abort，资源只能等待租约或 TTL。

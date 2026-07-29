@@ -3,7 +3,7 @@ title: "ADR-0007：原子准入控制"
 description: "记录当前请求级 admission、只读候选快照与逐 transport AttemptPermit 边界。"
 status: active
 owner: 网关团队
-last_updated: 2026-07-28
+last_updated: 2026-07-29
 related:
   - ../features/admission-control.md
   - ../features/routing-load-balancing.md
@@ -32,10 +32,11 @@ Provider，Provider 保存唯一 `origin`。
    RPM/RPD/并发属于该 request session。该范围也包括 `/v1/models`、`responses/input_tokens` 和当前返回 501 的
    状态操作；只有生成或压缩请求会在候选估算后由同一 token 一次性 Reserve TPM。Route 可分别覆盖请求层
    RPM、RPD、TPM 与并发；`NULL` 继承对应全局默认，`0` 表示显式不限，正数作为上限。
-2. 生成或压缩请求先形成 Route/候选计划并执行一次 `SnapshotMany`，再 Reserve 请求 TPM、完成账务授权并进入
-   执行。快照是整批只读线性化点；任一 control 或 identity pending、缺失、stale 会使整批失败，不创建 permit
-   或预占 Channel 资源。
-3. 每个真实 transport 前使用新的 `AttemptPermit` 原子取得候选资源，包括 compact 原生调用失败后的透明回落。
+2. 生成或压缩请求先形成 Route/候选计划并执行一次 `SnapshotMany`；每个候选分别计算输入估算与输出预算，
+   request TPM Reserve 使用所有可用候选完整预算的最大值，再完成账务授权并进入执行。快照是整批只读线性化点；
+   任一 control 或 identity pending、缺失、stale 会使整批失败，不创建 permit 或预占 Channel 资源。
+3. 每个真实 transport 前使用新的 `AttemptPermit` 原子取得当前候选的完整预算资源，包括 compact 原生调用失败
+   后的透明回落。上游请求的输出上限不超过该 permit 已预占的输出预算。
    Acquire 强读 integrity、ChannelRate、
    GlobalConcurrency 与 CircuitBreaker control facts；RouteRate 已绑定 request token，RoutingBalance 只用于快照，
    ChannelAdmission 与 Provider/Channel config revision 来自冻结候选计划。
@@ -46,11 +47,13 @@ Provider，Provider 保存唯一 `origin`。
    首候选和后续候选立即 fallback。等待计入客户 deadline，并继续持有 request token、入口并发、已 Reserve
    TPM 与账务预授权冻结；入口 RPM/RPD 已计数但不是等待租约。重试使用新 permit ID 和新读 control facts。
 6. request TPM Reserve 返回 limited 时不写 TPM 桶，但会把 limited 结果固化在仍 active 的 request token 上；
-   handler 返回前继续持有入口并发，随后由 Finalize 收口。输入估算为零时不会预占请求或 Channel TPM，后到的
-   正数 actual TPM 也不会补记到 Channel TPM。
-7. token/permit 的同 ID、同 fingerprint 幂等重试只覆盖 active 状态；终态同 ID 返回冲突。普通 control 或
-   Provider/Channel revision 热更新只影响新 Acquire，旧 permit 按固化桶身份收口；integrity epoch 换代则会在
-   Redis 调用前阻止 request Finalize 及 permit Finish/Abort，资源只能依赖租约或 TTL 过期。
+   handler 返回前继续持有入口并发，随后由 Finalize 收口。无权威 usage 时，明确未写出上游请求才释放完整预占；
+   已写出、收到响应头或出现协议有效首字时至少保留输入估算，有本地输出计量时保留输入加本地输出。
+7. Channel RPM/RPD 是否保留由请求写出、响应头和协议有效首字等交互证据决定，不按错误字符串判断；只有有交互
+   证据的 attempt 才写 `(route, channel, UTC day)` 归因桶。token/permit 的同 ID、同 fingerprint 幂等重试只覆盖
+   active 状态；终态同 ID 返回冲突。普通 control 或 Provider/Channel revision 热更新只影响新 Acquire，旧 permit
+   按固化桶身份收口；integrity epoch 换代则会在 Redis 调用前阻止 request Finalize 及 permit Finish/Abort，资源
+   只能依赖租约或 TTL 过期。
 
 ## 当前边界
 
@@ -58,15 +61,17 @@ Provider，Provider 保存唯一 `origin`。
 - `SnapshotMany` 不预占候选资源，也不一次锁定全部 fallback 候选或强制摘除所有零容量候选。
 - 候选资源不是由调用方分步取得；当前 Store Lua 在全部门槛通过后才统一写入 permit 与资源。
 - Redis 不可用时没有退回本机限流或本机 breaker 估计的放行路径。
-- Channel RPD 与 RPM/TPM 共用 permit TTL 派生的短 TTL，默认约 7.5 分钟，不保存完整 UTC 日历史。
+- request RPD、Channel 全局 RPD 和 Route-Channel attempt 归因桶都按 UTC 日编号，并使用覆盖完整日窗口及 permit
+  终态缓冲的 TTL。Channel 全局 RPD 原始日桶在 active permit 生命周期中意外丢失时，Finish/Abort/Renew fail closed，
+  不静默重新计数或释放。Redis 状态丢失后的当日重建尚未纳入本次开发环境改造。
 
 ## 代码与测试证据
 
-当前代码与测试已核验 request admission 接线、request session 所有权、逐候选 permit 调用位置、拒绝发生在
-attempt/transport 之前、Sticky 固定首候选容量拒绝使用新 permit 的至多一次短等、普通候选与 breaker 拒绝
-不等待，以及非流式、
-流式和透明 fallback 的独立 Acquire。现有 Store 与 service 测试还覆盖 active 状态同 ID 幂等、终态冲突、
-Abort/Finish、TPM Reserve、普通 revision stale、integrity epoch mismatch、pending/缺失和 Store 错误分支。
+当前代码与测试已核验 request admission 接线、request session 所有权、逐候选 permit 调用位置、完整 TPM 预算、
+拒绝发生在 attempt/transport 之前、Sticky 固定首候选容量拒绝使用新 permit 的至多一次短等、普通候选与 breaker
+拒绝不等待，以及非流式、流式和透明 fallback 的独立 Acquire。现有 Store 与 service 测试还覆盖 active 状态同 ID
+幂等、终态冲突、Abort/Finish、Channel RPD 完整日 TTL 与原始桶丢失 fail closed、交互证据归因、TPM 无 usage 保底、
+普通 revision stale、integrity epoch mismatch、pending/缺失和 Store 错误分支。
 
 ## 来源谱系
 
@@ -78,7 +83,7 @@ Abort/Finish、TPM Reserve、普通 revision stale、integrity epoch mismatch、
 | DEC-041 | 2026-07-21 | accepted，来源标注待实现 | 当前候选原子 Acquire、permit 资源所有权与请求/候选分层的主要来源；integrity epoch 换代会在 Redis 调用前阻断主动 Finish/Abort，是资源自然收口结论的例外。 |
 | DEC-042 | 2026-07-21 | accepted，来源标注待实现 | 普通 control/revision 热更新只影响新 Acquire；既有 permit 按固化桶身份收口，但 integrity epoch 换代只能依赖租约/TTL 释放。 |
 | DEC-043 | 2026-07-21 | accepted，来源称已实现，部分修订 | Redis control/revision 与 durable 发布有效；仅旧共享 rate-control 作用域由 DEC-054 修订。 |
-| DEC-044 | 2026-07-21 | accepted，来源标注待实现 | `0=不限` 仍记录入口与候选用量；Channel RPD 约 7.5 分钟短 TTL 无法维持完整 UTC 日历史。 |
+| DEC-044 | 2026-07-21 | accepted，来源标注待实现 | `0=不限` 仍记录入口与候选用量；Channel RPD 已改为完整 UTC 日 TTL，原始桶丢失时生命周期收口 fail closed。 |
 | DEC-048 | 2026-07-21 | accepted，来源标注待实现 | 保留容量 429、基础设施/混合原因 503 的边界；协议包络不在本 ADR 详细规定。 |
 | DEC-051 | 2026-07-21 | accepted，来源标注待实现 | 单逻辑主节点 Redis 是本 ADR 原子性前提；部署边界由 ADR-0011 合并。 |
 | DEC-053 | 2026-07-23 | accepted，来源称已实现，部分修订 | 两类默认 `0/0/0` 和不限仍计数有效；共享 key 由 DEC-054 取代。 |
