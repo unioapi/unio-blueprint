@@ -28,9 +28,10 @@ fail closed。
 ## 请求层准入
 
 - request token 在 API Key 认证后取得一次，入口 RPM、RPD 与并发在 Acquire 时处理；候选 fallback 不重复
-  Acquire。handler 返回后唯一 Finalize。
-- 只有生成或压缩请求在候选预算形成后，一次性、幂等 Reserve 请求层 TPM。Reserve 使用可执行候选中最大的
-  `input_estimate + output_budget`，fallback 不重复 Reserve。
+  Acquire。handler 返回后，同一 request session 停止 renewer 并唯一 Finalize。
+- 只有生成或压缩请求在候选输入估算完成后，一次性、幂等 Reserve 请求层 TPM。Reserve 使用可执行候选中最大的
+  `input_estimate`，fallback 不重复 Reserve。Reserve 返回 limited 时不写 TPM 桶，但会把 limited 结果固化在仍
+  active 的 request token；handler 返回前继续持有入口并发，随后仍需 Finalize。已记录的 Route RPM/RPD 不回滚。
 - Route 的 RPM、RPD、TPM 和并发使用 `NULL` / `0` / 正数语义：`NULL` 继承全局默认，`0` 表示不限，正数为
   上限。并发按同一 User Account 在该 Route 上的同时在途请求计数。
 - request-token renew 或 handler 后 Finalize 失败只记录日志和指标，不改写已经形成的公开响应。
@@ -42,8 +43,13 @@ fail closed。
 1. 从显式 Route 池形成同协议、同模型候选，完成状态、凭据、Adapter、价格和毛利检查。
 2. 读取一次共享运行态快照，校验 epoch、Provider/Channel revision、breaker、cooldown、permission、Channel
    并发容量与五项评分 control；再读取评分时间窗口样本，形成确定性候选顺序。
-3. 为每个候选计算输入估算和输出预算，使用最大完整预算 Reserve 请求层 TPM，再完成账务授权。
+3. 为每个候选按最终上游 wire 计算完整输入估算；以最大 `input_estimate` Reserve 请求层 TPM，再使用与 TPM
+   分离的保守输出估算完成账务授权。
 4. 执行器按实际扫描顺序为每个尚未真实尝试的候选申请新的 `AttemptPermit`。
+
+客户显式提供的输出上限由协议校验并原样映射，不参与 Redis TPM 初始占用；客户省略 OpenAI Chat
+Completions、Responses 或 Responses Compact 输出上限时，Gateway 不用固定默认值或模型能力上限补齐，也不向
+上游注入人为上限。账务授权可以使用独立的保守输出估算，但该估算不写入 Redis TPM，也不改变上游请求。
 
 只读快照不创建 permit，也不预占 Channel 并发。Channel RPM、RPD、TPM 不参与候选快照、资格或 Acquire；
 Admin 展示的三项值来自 request attempt 记录的时间窗口聚合。
@@ -52,7 +58,7 @@ Admin 展示的三项值来自 request attempt 记录的时间窗口聚合。
 
 候选 Acquire 在一个 Redis 原子操作中检查：
 
-- request token 仍 active，且请求层 TPM Reserve 不小于当前候选预算；
+- request token 仍 active，且请求层 TPM Reserve 不小于当前候选输入估算；
 - runtime state epoch、Redis server identity、fault latch 与 reconciliation proof；
 - Provider origin/status control、双 revision、pending fence 和 Channel 对 Provider 的身份绑定；
 - Channel config revision、capacity revision 与当前 committed Channel capacity control；
@@ -93,8 +99,17 @@ transport 的 Channel 不再尝试，禁止 A → B → A。
 - runtime epoch 换代是例外：Manager 在 Redis 调用前拒绝旧 token/permit 的 Finalize、Finish 或 Abort，资源只能
   等待租约 TTL。
 
-Channel 不再拥有 RPM/RPD/TPM 预占、释放或对账资源。请求层 TPM 仍按权威 usage 对账；没有权威 usage 时，
-明确未写出上游请求才释放完整预占，已有交互证据至少保留输入估算，有本地输出计量时保留输入加输出。
+Channel 不再拥有 RPM/RPD/TPM 预占、释放或对账资源。请求层 TPM 只在取得可靠 usage 时按
+`actual_total - input_estimate` 对账；没有可靠 usage 时，明确未写出上游请求才释放输入占用，已有交互证据或
+结果不确定时保留输入。本地或 partial usage 不修改 Redis TPM。request Finalize 对最终逻辑请求采用相同规则：
+可靠 usage 将 Route TPM 结算为 `actual_total`；所有候选都确认未写出时释放 Route 输入占用；只要有候选已写出
+或结果不确定且没有可靠 usage，就保留 Route 输入占用。
+
+Redis TPM 的可靠 `actual_total` 等于互斥的 uncached input、cache read、各类 cache write 与
+`output_tokens_total` 之和；reasoning 是输出总量的分解项，不重复相加。运行中请求只占用输入，已完成请求占用
+可靠 actual，已触达但无可靠 usage 的请求保留输入，因此 TPM 是软限制：完成后的正差额可以让原分钟桶超过限额，
+后续准入会看到该结果。释放或结算始终修改取得占用时冻结的分钟桶；该桶已自然过期时终态成功且不重建旧桶，
+减量则以零为下限。
 
 ## Store 故障行为
 
@@ -106,6 +121,21 @@ Channel 不再拥有 RPM/RPD/TPM 预占、释放或对账资源。请求层 TPM 
 | 成功 transport 的 Finish 无法确认 | 记录 unknown，不反转已经取得的成功响应和 settlement 主路径。 |
 | 失败 transport 的 Finish 无法确认 | 停止普通 fallback，按运行态故障收口。 |
 | handler 后 request Finalize | 失败只记录日志；integrity epoch 换代时入口资源等待 TTL。 |
+
+## 状态与边界情况
+
+| 状态或条件 | 当前结果 |
+| --- | --- |
+| 请求层真实限额命中 | 不创建候选 permit、不调用上游，公开返回 429。 |
+| 请求层 TPM Reserve 命中限额 | TPM 桶不增加且不创建候选 permit；入口已记录的 Route RPM/RPD 不回滚，公开返回 429。 |
+| 运行态快照 runtime-sync/pending/stale | 整批失败；尚未 Reserve 请求 TPM、授权、创建 attempt 或调用上游。 |
+| 单候选并发满 | 立即扫描下一候选，不创建 attempt。 |
+| 整池仅因并发满 | 共享一次有界等待后完整重扫；仍满则 503。 |
+| 整池 cooldown | 429，不等待。 |
+| breaker、permission、revision 或混合业务 denial | 不等待；继续可用候选或返回安全 503。 |
+| 候选 Acquire Store 故障 | 停止执行，释放账务授权并返回安全 503。 |
+| transport 已开始后配置变化 | 调用、billing 和审计继续；资源按原身份收口，breaker/证据结果可能因当前配置与围栏变为 no-op。 |
+| transport 或 handler 结束前 integrity epoch 换代 | Finish/Abort/Finalize 在 Redis 调用前失败；调用结果仍按业务路径处理，运行资源依赖租约/TTL 过期。 |
 
 ## 数据、安全与可观测性
 
