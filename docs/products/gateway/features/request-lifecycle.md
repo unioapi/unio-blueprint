@@ -3,7 +3,7 @@ title: Gateway 请求生命周期
 description: 请求从身份确认到协议交付、结算与恢复的当前行为。
 status: active
 owner: 网关团队
-last_updated: 2026-07-29
+last_updated: 2026-07-31
 related:
   - ../README.md
   - ../glossary.md
@@ -16,6 +16,7 @@ related:
   - ../decisions/adr-0005-request-identity.md
   - ../decisions/adr-0006-protocol-adapter-boundary.md
   - ../decisions/adr-0007-atomic-admission-control.md
+  - ../decisions/adr-0017-authoritative-first-token.md
 ---
 
 # Gateway 请求生命周期
@@ -32,30 +33,32 @@ Schema 和测试能够共同证明的行为。
    校验并进入 service 后，才另行创建 `req_` 持久业务请求 ID；HTTP correlation ID 不替代这两个标识。
 2. 对生成或压缩请求，按入口协议和客户模型形成候选计划，过滤不支持当前 Endpoint 或传输方式的 Adapter，以及
    缺少 Channel-Model 映射的候选；模型能力声明当前不是运行时准入闸门。
-3. 对候选执行一次只读 `SnapshotMany`，取得运行态资格、经济、健康和容量事实，再结合冻结的 Priority
-   计算客观分并确定性排序，然后对每个候选分别估算输入 token 和输出预算。快照不预占候选资源；
+3. 对候选执行一次只读运行态快照，取得资格、Channel 并发和评分 control，再结合最近 30 分钟 attempt 样本，
+   计算成本、并发、TTFT、错误率和 Priority 五项客观分并确定性排序。快照不预占候选资源；
    runtime-sync/pending/stale identity/config 会使整批失败。
 4. 每个候选形成 `input_estimate + output_budget = candidate_budget`，Route 请求层 TPM 一次性 Reserve
    所有可用候选的最大 `candidate_budget`，再根据同一输出上限完成账务授权。余额不大于零时不调用上游；余额
    大于零但不足完整预算时冻结全部剩余可用余额并继续调用，不自动缩小客户输出上限。
-5. 按候选顺序执行。每个真实 transport 前取得新的 `AttemptPermit`，permit 成功后才创建 attempt；denied
-   candidate 不创建 attempt、不调用该候选上游。普通容量拒绝立即 fallback；只有 Sticky 固定首候选可短等
-   一次。除候选 Acquire 的 Store 类故障外，执行器继续后续候选。
+5. 按实际扫描顺序执行。每个真实 transport 前取得新的 `AttemptPermit`，permit 成功后才创建 attempt；denied
+   candidate 不创建 attempt、不调用该候选上游。单候选并发满立即扫描下一候选；只有整池都仅因并发满时，
+   才共享一次有界等待并完整重扫。除候选 Acquire 的 Store 类故障外，执行器继续后续候选。
 6. Adapter 对一个 attempt 发起一次真实调用并生成协议响应和 `ResponseFacts`。生命周期同时记录请求是否完整
-   写出、是否收到响应头、是否出现协议定义的有效首字。首个客户帧成功写出前可按稳定错误类别 fallback；
-   成功写出后不再切换候选。明确未写出才 `Abort` 释放 Channel 预占；已有交互证据或结果不确定时 `Finish`
-   保留 Channel attempt 事实。
+   写出、是否收到响应头、是否出现协议定义的有效生成 Token。首字前协议事件先按 attempt 暂存，不向客户
+   泄漏失败渠道身份；有效生成 Token 成功写出前可按稳定错误类别 fallback，向客户写出任意帧后不再切换候选。
+   明确未写出才 `Abort` 释放 Channel 预占；已有交互证据或结果不确定时 `Finish` 保留 Channel attempt 事实。
+   Channel `response_timeout_ms` 区分响应头和非流式响应体阶段；流式首个有效生成 Token 还受
+   `first_token_timeout_ms`（上游首字超时）限制，之后由全局 stream-idle timeout 接管。
 7. 取得可结算事实后，recoverable settlement 先校验事实并创建 pending recovery job，再尝试内联结算。
    内联结算成功后尽力把 job 标为 succeeded；内联失败但 job 已持久化时由 worker 接管。
-8. 非流式响应，以及由 Gateway 生成成功收尾帧的 Chat、Messages 和 Responses 桥接流，在第 7 步完成或由
-   recovery 接管后才交付成功终态。Responses 直传流会在 Adapter 回调期间原样写出上游终态，存在下述例外。
+8. 非流式响应和全部流式成功终态都在第 7 步完成或由 recovery 接管后才交付。缺少上游 final usage 的
+   partial 成功仍必须写出协议终态（Responses `response.completed/incomplete`、Anthropic `message_stop`）；
+   Responses 直传使用暂存的上游原始终态，bridge 与 Messages 使用 Gateway 生成的终态。
 9. handler 返回后唯一 Finalize request-admission session；候选 fallback 不重复取得或终结入口资源。普通 revision
    更新不改变该收口；integrity epoch 已换代时 Finalize 会在 Redis 调用前失败，入口资源只能等待 TTL 过期。
 
-Route 与 Channel 的 RPM、RPD、TPM 和并发由各自资源主体独立记录，不要求严格求和。Route RPD 是入口请求事实；
-Channel 全局 RPD 是有上游交互证据的 attempt 容量事实，当前 Route 的 Channel 行另读 `(route, channel, UTC day)`
-归因桶。Channel RPD 日桶必须覆盖完整 UTC 日和终态缓冲，原始桶意外丢失时 `Finish/Abort/Renew` 走
-`runtime-sync-required`，不能静默重新计数或释放。
+Route/User 的 RPM、RPD、TPM 和并发仍是请求层准入资源。Channel 只有并发是候选硬门槛；Channel RPM、RPD、
+TPM 由真实 attempt 的分钟/UTC 日观测桶自动聚合，不参与拒绝或评分。观测写入 best effort，失败不改写客户
+请求结果；可靠 token usage 缺失时 TPM 覆盖率同时可见。
 
 ## 资金与恢复事实
 
@@ -76,18 +79,23 @@ Channel 全局 RPD 是有上游交互证据的 attempt 容量事实，当前 Rou
 
 | 条件 | 交付与 fallback | 账务与状态 |
 | --- | --- | --- |
-| 首个客户帧成功写出前失败 | 尚可按错误类别 fallback | 当前候选 attempt 失败；候选耗尽后释放授权。 |
-| 客户取消，且至少一帧已确认写出 | 不再 fallback，交付记 interrupted | 使用 `partial_stream_estimate`；即使已写帧没有可见文本，仍按保守输入和零输出结算。请求与 attempt 的内联目标状态为 canceled。 |
-| 上游中断，已确认写出且累计估得正数 output token | 不再 fallback，交付记 interrupted | 使用 `partial_stream_estimate`；请求与 attempt 的内联目标状态为 failed。 |
-| 上游中断，已写帧但累计估得的 output token 不大于零 | 不再 fallback，交付记 interrupted | 不做 partial settlement，释放授权；bill-on-disconnect 渠道可另记平台成本敞口。 |
-| 上游正常结束、缺少最终 usage，且至少一帧已写出 | 不再 fallback，交付记 completed | 使用 `partial_stream_estimate`，请求与 attempt 按 succeeded 收口。 |
+| 有效生成 Token 成功写出前失败 | 尚可按错误类别 fallback；前导帧暂存被丢弃 | 当前候选 attempt 失败；候选耗尽后释放授权。 |
+| 客户取消，且有效生成 Token 已确认写出 | 不再 fallback，交付记 interrupted | 使用 `partial_stream_estimate`；即使已写帧没有更多可见文本，仍按保守输入和已累计输出结算。请求与 attempt 的内联目标状态为 canceled。 |
+| 上游中断，有效生成 Token 已确认写出 | 不再 fallback，交付记 interrupted | 使用 `partial_stream_estimate`；即使 tokenizer 估算 output 为零，也按保守输入事实结算；请求与 attempt 的内联目标状态为 failed。 |
+| 上游中断，仅前导帧或没有有效生成 Token | 不再 fallback（若已有前导帧）；交付记 interrupted | 不做 partial settlement，释放授权；bill-on-disconnect 渠道可另记平台成本敞口。 |
+| 上游正常结束、缺少最终 usage，且有效生成 Token 已写出 | 不再 fallback，交付记 completed | 使用 `partial_stream_estimate`，请求与 attempt 按 succeeded 收口。 |
+| 上游正常结束、缺少最终 usage，且仅有前导帧暂存 | 不向客户交付暂存前导帧 | 不做 partial settlement，释放授权，返回 usage-missing。 |
 | 已取得可靠 `ResponseFacts` 后发生尾部错误 | 不再 fallback；已开始交付时记 interrupted | 仍按可靠 usage 完整结算。 |
 | 内联结算失败但 recovery 已接管 | 按上述分支继续结束当前交付 | 请求可暂时保持 `running`；worker 后续重放或进入 `dead`。 |
 
 `partial.v1` 使用预授权阶段的保守输入估算，并按进程配置的固定缓存率拆为 cache-read 与 uncached，
-默认比例为 60% / 40%。输出只累计至少有一个客户帧成功写出的协议可见文本；tokenizer 失败时非空文本
-也可能累计为零。当前没有用后到权威 usage 替换 partial 估算的机制；重复 settlement 要求原 usage、
+默认比例为 60% / 40%。输出只累计有效生成 Token 交付后确认写出的协议可见文本；tokenizer 失败时非空文本
+也可能累计为零，但这不取消“有效生成 Token 已交付”这一 partial 资格。当前没有用后到权威 usage 替换 partial 估算的机制；重复 settlement 要求原 usage、
 来源和映射版本一致。
+
+Gateway TTFT（`gateway_first_token_at - started_at`）与上游 TTFT
+（`upstream_first_token_at - upstream_started_at`）独立记录；判定与字段边界见
+[ADR-0017](../decisions/adr-0017-authoritative-first-token.md)。
 
 ## 交付与审计
 
@@ -101,10 +109,12 @@ Channel 全局 RPD 是有上游交互证据的 attempt 容量事实，当前 Rou
 审计默认只保存协议、操作、模型、完成分类、用量、Provider/Channel 安全标识和有限诊断，不保存 prompt、
 完整响应、凭据、API Key 明文或上游错误正文。
 
+每个进入候选规划的请求另保存一条结构化 routing trace，从 `partial` 收口到 `complete`，记录候选资格、五项
+评分、基准与实际扫描顺序、Sticky CAS、容量等待、真实 attempt、timeout phase 和最终结果。trace 与请求记录
+一对一绑定并随请求级联删除。
+
 ## 当前边界事实
 
-- Responses 直传流会先原样写出上游 `response.completed`，Adapter 返回后才创建 recovery job 并结算。
-  如果 job 创建失败，客户可能已经收到成功终态，request 随后却走失败收口。
 - recovery job 不保存 partial settlement 的 request/attempt 目标终态和错误事实。初次结算未提交时，worker
   重放会默认按 succeeded 收口；若 canceled/failed settlement 已提交但 job 完成标记丢失，后续重放又会因
   request 终态不被幂等入口接受而持续失败。

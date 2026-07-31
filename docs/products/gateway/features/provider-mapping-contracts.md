@@ -58,8 +58,9 @@ Responses Compact 的候选前置与注册槽位不完全对称：当前候选�
 非流式 Chat 能力，然后才按 `HasResponsesCompact` 选择 Native 或 Synthetic。当前 service 固定
 开启 Native 404/405 向 Synthetic 的独立准入回落，没有生产 setter 或运行配置入口。
 
-原生流解析器在收到 `response.completed` 时立即把该事件写给客户，流返回后 lifecycle 才取得最终 facts、
-创建 settlement recovery 并尝试结算。因此当前直传流可能在 recovery 事实持久化之前向客户交付成功终态。
+原生流解析器仍从 `response.completed/incomplete` 抽取最终 facts，但 service 会捕获该上游成功终态，
+lifecycle 不立即向客户写出。创建 settlement recovery 并完成内联结算或确认 recovery 接管后，Gateway 才
+按原始事件内容恢复模型回显并交付终态。
 
 ## Anthropic 官方路径
 
@@ -149,7 +150,6 @@ bridge 生成的 SSE 只覆盖可由 Chat 表达的 Responses 事件。正常结
 
 - Provider Adapter Drop 只有不完整的字段名应用日志，Responses bridge Drop 诊断未被生产调用点消费；
   两层都没有可关联的持久审计。
-- 原生 Responses 流可以先交付 `response.completed`，再创建 settlement recovery。
 - Anthropic server-tool 次数的明确零值不能作为有效 facts 保存；缺失、零和不适用也未在 recovery 中形成
   完整三态。
 - 正数 `web_search` 与 `web_fetch` 次数可以持久化，但当前收费和成本仍只使用 token 公式。

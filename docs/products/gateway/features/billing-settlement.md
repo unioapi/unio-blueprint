@@ -3,13 +3,14 @@ title: "功能设计：账务与结算"
 description: "记录预付余额、授权、结算、核销、价格与成本快照的当前行为。"
 status: active
 owner: 网关团队
-last_updated: 2026-07-26
+last_updated: 2026-07-31
 related:
   - ../overview.md
   - ../glossary.md
   - request-lifecycle.md
   - ../decisions/adr-0002-route-product-pricing.md
   - ../decisions/adr-0003-billing-settlement.md
+  - ../decisions/adr-0017-authoritative-first-token.md
 ---
 
 # 功能设计：账务与结算
@@ -65,16 +66,17 @@ API Key `spend_limit` 在认证阶段检查，是允许并发或在途请求结�
 
 | 分支 | 结算输入 | 请求与交付终态 |
 | --- | --- | --- |
-| 客户取消，至少一帧已确认写出 | 保守输入估算；输出只计已确认写出的可见文本，允许为零 | 内联目标为 canceled，delivery interrupted |
-| 上游中断，已确认写出且累计估得正数 output token | 同上 | 内联目标为 failed，delivery interrupted |
-| 上游正常结束、缺最终 usage，至少一帧已写出 | 同上 | succeeded，delivery completed |
+| 客户取消，有效生成 Token 已确认写出 | 保守输入估算；输出只计已确认写出的可见文本，允许为零 | 内联目标为 canceled，delivery interrupted |
+| 上游中断，有效生成 Token 已确认写出 | 同上；tokenizer 估算 output 为零时仍使用保守输入事实 | 内联目标为 failed，delivery interrupted |
+| 上游正常结束、缺最终 usage，有效生成 Token 已写出 | 同上 | succeeded，delivery completed |
 
-上游中断时，如果已写帧但累计估得的 output token 不大于零，则不做 partial settlement，而是释放授权；
-bill-on-disconnect 渠道可另记平台成本敞口。客户取消与上游中断故意采用不同门槛：客户取消只要求已有
-确认写出的帧，上游中断还要求 `partialOutputTokens > 0`。tokenizer 失败时，非空可见文本也可能计为零。
+上游中断时，如果仅有前导帧或没有有效生成 Token，则不做 partial settlement，而是释放授权；
+bill-on-disconnect 渠道可另记平台成本敞口。客户取消与上游中断都以有效生成 Token 已交付作为 partial
+资格；tokenizer 失败时，非空可见文本可能计为零，但不取消该资格。仅前导帧后缺 usage 同样释放预扣并
+返回 usage-missing。
 
 `partial.v1` 复用授权阶段的保守输入估算，按进程配置的固定缓存率拆为 cache-read 与 uncached，默认
-60% / 40%；输出只累计成功写出帧中的协议可见文本。当前没有权威 usage 后到替换机制，再次 settlement
+60% / 40%；输出只累计有效生成 Token 交付后成功写出帧中的协议可见文本。当前没有权威 usage 后到替换机制，再次 settlement
 必须与已经保存的 usage、来源和映射版本一致，否则发生幂等冲突。
 
 ## Settlement Recovery
@@ -148,4 +150,5 @@ Provider 成本、平台核销和 bill-on-disconnect 估算敞口保存在不同
 ## 关联决策
 
 - [ADR-0003：预付账务与可审计结算](../decisions/adr-0003-billing-settlement.md)
+- [ADR-0017：权威首字判定与双 TTFT](../decisions/adr-0017-authoritative-first-token.md)
 - [ADR-0002：线路作为产品档位与定价边界](../decisions/adr-0002-route-product-pricing.md)

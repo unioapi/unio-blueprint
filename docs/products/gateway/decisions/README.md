@@ -3,7 +3,7 @@ title: Gateway（网关）领域决策
 description: 只影响网关领域的架构决策索引。
 status: active
 owner: 网关团队
-last_updated: 2026-07-28
+last_updated: 2026-07-31
 related:
   - ../README.md
   - ../../../decisions/README.md
@@ -54,6 +54,8 @@ related:
 | [ADR-0012](adr-0012-provider-channel-route-lifecycle.md) | active | Provider、Channel 与 Route 的供给关系与生命周期。 |
 | [ADR-0013](adr-0013-provider-runtime-fencing.md) | active | Provider 双 revision、Channel、control 与 runtime epoch 围栏。 |
 | [ADR-0014](adr-0014-provider-breaker-attribution.md) | active | Provider 与 Channel breaker、证据和独立反馈归因。 |
-| [ADR-0015](adr-0015-deterministic-cost-aware-routing.md) | active | 四项客观分确定性排序、Channel Sticky 与 Permit fallback。 |
+| [ADR-0015](adr-0015-deterministic-cost-aware-routing.md) | superseded | 历史四项客观分、Channel Sticky 与 Sticky 首候选短等。 |
+| [ADR-0016](adr-0016-five-factor-routing-and-cas-sticky.md) | active | 五项客观分、原子并发与全池短等、CAS Sticky 和完整 trace。 |
+| [ADR-0017](adr-0017-authoritative-first-token.md) | active | 权威首字判定、前导帧缓冲、上游 TTFT 与 Gateway TTFT 拆分。 |
 
 新建时使用 [ADR 模板](../../../templates/adr.md)。

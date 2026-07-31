@@ -3,7 +3,7 @@ title: 韧性与熔断器
 description: Gateway 对真实上游故障按 Provider 与 Channel 归因、隔离、恢复和解释的当前行为。
 status: active
 owner: 网关团队
-last_updated: 2026-07-29
+last_updated: 2026-07-31
 related:
   - ../glossary.md
   - admission-control.md
@@ -29,7 +29,7 @@ Gateway 只把已经进入真实上游 transport、且可归因到对应作用�
 | 429 cooldown | 按 Channel 保存跨 Gateway 冷却 | breaker 样本和 open level |
 | Channel-Model permission pause | 暂停精确的 Channel、Model 与 revision 组合 | 整个 Channel 凭据有效性 |
 | credential gate | 处理连续真实上游 401 与凭据轮换 | 403 权限和 breaker 状态 |
-| AttemptPermit | 在 transport 前原子取得 breaker、half-open、限额与并发资格，并终结资源 | 根据业务错误猜测归因 |
+| AttemptPermit | 在 transport 前原子取得 breaker、half-open、cooldown、permission 与 Channel 并发资格，并终结资源 | 根据业务错误猜测归因 |
 
 ## 状态机
 
@@ -54,14 +54,14 @@ level 和 half-open lease。默认 control 使用：
 
 | 已开始 transport 的结果 | Channel | Provider | 其他反馈 |
 | --- | --- | --- | --- |
-| 成功且有有效协议 facts | eligible success | eligible success | 可对账 Channel TPM |
+| 成功且有有效协议 facts | eligible success | eligible success | 记录错误率分母、流式 TTFT 与 RPM/RPD/TPM 观测 |
 | timeout、HTTP 5xx | eligible failure | 按直接或 evidence 规则 | 无 |
 | 明确协议解码、非法响应或 stream 读取失败 | eligible failure | 通常 ignored | 无 |
 | 401 | ignored | ignored | 连续凭据闸门 |
 | 403 | ignored | ignored | Channel-Model permission pause |
 | 上游 rate limit（HTTP 429 或 Responses SSE 内联失败） | ignored | ignored | Channel cooldown |
 | 其他 4xx、客户取消、未分类本地错误 | ignored | ignored | 按业务路径收口 |
-| transport 前失败 | Abort，不形成 breaker 结果 | Abort，不形成 breaker 结果 | 释放 permit 资源 |
+| transport 前失败 | Abort，不形成 breaker 结果 | Abort，不形成 breaker 结果 | 释放并发与 half-open lease，不产生观测样本 |
 
 HTTP 502、503、504、无状态 server error、发送/握手/响应头 timeout、连接重置、代理截断和相同性质的 stream
 server error 直接形成 Provider failure。HTTP 500、首 token timeout 和 body read timeout 先只形成 Channel
@@ -73,10 +73,10 @@ failure。类别之间不能拼样本。
 每个真实 transport 前取得新的 `AttemptPermit`，固化 runtime epoch、Provider origin/status revision 与 fence、
 Channel config revision、两层 breaker generation、half-open 权利、模型、operation、传输模式和资源 token。
 
-- 未开始 transport 的路径 Abort，只释放资源，不写 breaker/evidence/TTFT。
-- Finish 无论反馈是否可应用，都先释放并发并按 usage 对账或释放 TPM。
+- 未开始 transport 的路径 Abort，只释放并发与 half-open lease，不写 breaker/evidence 或评分样本。
+- Finish 无论 breaker 反馈是否可应用，都先释放并发；request attempt 样本和观测与 Channel admission 解耦。
 - Provider 双 revision/fence、Channel revision 或 generation 变化时，旧反馈返回 stale disposition；资源仍终结，
-  当前 Provider breaker/evidence、Channel breaker 与 TTFT 不被旧事实修改。
+  当前 Provider breaker/evidence 与 Channel breaker 不被旧事实修改。request attempt 仍保存已发生的时间和结果。
 - runtime epoch 换代时 Manager 在 Redis 调用前拒绝 Finish/Abort，资源只能等待租约或 TTL。
 
 ## 401、403 与 429
@@ -95,26 +95,26 @@ Provider 与 Channel breaker 独立 reset。Provider reset 先读取 PostgreSQL 
 key 是否存在而创建状态。reset 不清除 cooldown 或 permission pause。
 
 Provider/Channel 归档立即清理 breaker、evidence/cooldown、permission 和新准入 control，但保留在途 permit、
-并发租约和计数桶。归档前已开始的调用可以完成；其 breaker/evidence/TTFT 反馈成为 stale/no-op。
+并发租约。归档前已开始的调用可以完成；其 breaker/evidence 反馈成为 stale/no-op，attempt 审计仍保存。
 
 ## `enabled=false`
 
 `gateway.circuit_breaker.enabled=false` 使 Acquire 不因 open/half-open 拒绝，并使两层 breaker disposition
-返回 `not_applicable`。它不绕过 AttemptPermit、Provider 围栏、integrity、并发、RPM、RPD、TPM、cooldown、
-permission pause 或 Store fail closed。当前脚本在 disabled 分支不写新的 Channel TTFT 样本。
+返回 `not_applicable`。它不绕过 AttemptPermit、Provider 围栏、integrity、Channel 并发、cooldown、
+permission pause 或 Store fail closed，也不关闭独立的 TTFT、错误率和 RPM/RPD/TPM 观测样本。
 
 ## 安全与可观测性
 
 公开响应不回显 Provider、Channel、上游地址、候选数、breaker key、归因码或内部 revision。内部运行态展示
 两层状态、样本、错误率、open 剩余时间、generation、Finish disposition，以及独立 cooldown、permission 和
-Channel TTFT。Provider 不保存 TTFT。
+最近 30 分钟 Channel TTFT/错误率评分样本。Provider 不保存 TTFT。
 
 Redis 当前 key 使用 Provider/Channel 命名空间；不存在旧 Origin key、combined routing Lua 或兼容读取路径。
 
 ## 代码与测试证据
 
 当前测试覆盖 eligible/ignored、连续和比例触发、退避、half-open、重复终结、Provider/Channel 独立 reset、
-三类隔离 evidence、429、403、401、双 revision/generation stale、TTFT stream-only、404 reset、Store fail
+三类隔离 evidence、429、403、401、双 revision/generation stale、TTFT stream-only 评分样本、404 reset、Store fail
 closed 和多 Gateway 共享状态。
 
 ## 相关决策

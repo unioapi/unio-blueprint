@@ -84,8 +84,9 @@ input item 与请求级 `reasoning.summary` 不在其中。非流式、流式、
 不在同一层，也不能替代可关联的持久审计。
 
 原生直传也不是字节级无条件透传：非流式 2xx 若 `status=failed` 或带 `error` 会转为安全的上游错误；
-流式 `response.failed` 与 `error` 会重建为脱敏最小信封，上游附加的 Chat `[DONE]` 会被截留，畸形的
-多行 `data` 帧可能被修复。普通成功 payload 除模型回显改写外保持上游结构。
+流式 `response.failed` 与 `error` 会重建为脱敏最小信封，上游附加的 Chat `[DONE]` 会被截留且不能替代
+`response.completed/incomplete`，畸形的多行 `data` 帧可能被修复。普通成功 payload 除模型回显改写外
+保持上游结构；流式成功终态会暂存到 settlement/recovery 接管后再原样交付。
 
 `/v1/responses/compact` 没有独立的 Compact-only 候选过滤。它先按强制 Chat bridge 的口径
 要求候选同时具备 Chat tokenizer 与非流式 Chat 能力，然后在调用阶段按
@@ -118,7 +119,7 @@ Chat 基线能力的 AdapterKey 当前不能服务该端点。
 | 文本输出 | `response.created`、message `output_item.added`、`content_part.added`、`output_text.delta`、`output_text.done`、`content_part.done`、带完整 message 的 `output_item.done`。 |
 | reasoning 输出 | reasoning `output_item.added`、`content_part.added`、`reasoning_text.delta`、`reasoning_text.done`、`content_part.done`、带完整 reasoning item 的 `output_item.done`；满足条件时该 item 含 Unio reasoning 回放载体。 |
 | function 调用 | function `output_item.added`、`function_call_arguments.delta`、带完整 `call_id`、名称和 arguments 的 `output_item.done`。 |
-| refusal | 不生成 refusal delta；文本累积后只在最终 message `output_item.done` 和终态 Response 中保留 refusal part。 |
+| refusal | message `output_item.added`、refusal `content_part.added`、`response.refusal.delta`、`response.refusal.done`、`content_part.done`，并在最终 message `output_item.done` 与终态 Response 中保留完整 refusal part。 |
 | 正常终态 | `stop`、工具调用等映射为 `response.completed`；`length` 或 `content_filter` 映射为 `response.incomplete`。 |
 | Bridge 开流后失败 | 尽力追加 `event: error` 后中断，不合成 `response.failed`，也不得发送 `response.completed`。 |
 | 原生直传失败事件 | 上游 `response.failed` 或 `error` 经脱敏重建后转发，随后按失败收口，不追加成功终态。 |

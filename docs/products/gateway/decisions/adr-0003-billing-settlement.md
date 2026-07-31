@@ -3,13 +3,14 @@ title: "ADR-0003：预付授权、结算与恢复的账务边界"
 description: "Gateway 在上游调用前冻结可用余额，按 token_v1 结算，并以补扣、核销、快照和恢复记录账务事实。"
 status: active
 owner: 网关团队
-last_updated: 2026-07-26
+last_updated: 2026-07-31
 related:
   - ../overview.md
   - ../features/access-control.md
   - ../features/billing-settlement.md
   - ../features/request-lifecycle.md
   - adr-0002-route-product-pricing.md
+  - adr-0017-authoritative-first-token.md
 ---
 
 # ADR-0003：预付授权、结算与恢复的账务边界
@@ -68,10 +69,10 @@ debit 和可选的一条 overage debit 表达，不保存在价格快照中。
 
 | 当前分支 | 结算与终态 |
 | --- | --- |
-| 客户取消，至少一帧已确认写出 | 使用保守输入估算和已写出可见文本的输出估算；request/attempt 目标为 `canceled`，delivery 为 `interrupted`。即使输出估算为零，也会结算保守输入。 |
-| 上游中断，至少一帧已确认写出且输出估算为正 | 使用同一 partial 事实；request/attempt 目标为 `failed`，delivery 为 `interrupted`。 |
-| 上游正常结束、缺 final usage，且至少一帧已确认写出 | 使用同一 partial 事实；request/attempt 为 `succeeded`，delivery 为 `completed`。 |
-| 首个客户帧前终止，或上游中断后输出估算不大于零 | 不做 partial settlement，释放授权；bill-on-disconnect Channel 可以另记平台成本敞口。 |
+| 客户取消，有效生成 Token 已确认写出 | 使用保守输入估算和已写出可见文本的输出估算；request/attempt 目标为 `canceled`，delivery 为 `interrupted`。即使输出估算为零，也会结算保守输入。 |
+| 上游中断，有效生成 Token 已确认写出且输出估算为正 | 使用同一 partial 事实；request/attempt 目标为 `failed`，delivery 为 `interrupted`。 |
+| 上游正常结束、缺 final usage，且有效生成 Token 已确认写出 | 使用同一 partial 事实；request/attempt 为 `succeeded`，delivery 为 `completed`。 |
+| 有效生成 Token 交付前终止，或仅前导帧后缺 usage / 上游中断后输出估算不大于零 | 不做 partial settlement，释放授权；bill-on-disconnect Channel 可以另记平台成本敞口。 |
 
 `partial.v1` 复用授权阶段的保守输入估算，并按进程配置的固定比例拆分缓存读取与未缓存输入，默认
 60% / 40%；输出只累计成功写出帧中的协议可见文本。已提交的 partial usage 当前不能被后到的权威 usage
@@ -93,8 +94,6 @@ debit 和可选的一条 overage debit 表达，不保存在价格快照中。
 
 ## 当前边界
 
-- Responses 直传流会先透传上游 `response.completed`，Adapter 返回后才创建 recovery job。job 创建失败时，
-  客户可能已经收到成功终态，而后台请求随后按失败收口。
 - recovery job 不保存 partial settlement 的 request/attempt 目标终态和错误事实。worker 首次重放会使用
   默认 `succeeded`；已经提交为 `canceled`/`failed` 的 partial 也不满足当前成功幂等入口。
 - recovery job 不直接保存长上下文策略。倍率成本路径依赖 `CostBaseModelPriceID` 对应行仍可读取；绝对
@@ -114,7 +113,7 @@ debit 和可选的一条 overage debit 表达，不保存在价格快照中。
 | 原 DEC | 原始日期 | 原状态 | 当前处理与取代/修订关系 |
 | --- | --- | --- | --- |
 | DEC-001 | 未记录 | accepted，当前实现部分超越 | 保留余额归 User Account；Project、API Key 容器和用量归集的旧层级由当前 `User Account -> API Key -> Route` 结构取代。 |
-| DEC-003 | 未记录；2026-06-25 修订 | accepted，部分修订 | 首个客户帧前终止或无输出不收费保留；已写出且无 final usage 的分支由 DEC-025 修订。 |
+| DEC-003 | 未记录；2026-06-25 修订；2026-07-31 再修订 | accepted，部分修订 | 有效生成 Token 交付前终止或无输出不收费保留；已交付有效生成 Token 且无 final usage 的分支由 DEC-025 / ADR-0017 修订。 |
 | DEC-006 | 未记录 | accepted，超额结算部分已取代 | 部分余额授权和余额不为负保留；“实扣封顶于原授权、差额全部核销”由当前 capture + 独立 overage debit + 残差 write-off 取代。 |
 | DEC-007 | 未记录 | accepted，当前实现有不同边界 | 保留持久 recovery 负责上游成功后结算失败收口的边界；job 创建失败、partial 终态和长上下文恢复按当前代码记录。 |
 | DEC-008 | 未记录 | accepted，部分超越 | 金额、usage、售价和成本快照保留；“不支持倍率”由 DEC-026 的售价倍率和 DEC-027 的成本倍率超越。 |

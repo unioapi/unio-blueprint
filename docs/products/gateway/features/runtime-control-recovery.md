@@ -3,7 +3,7 @@ title: 运行控制与恢复
 description: Gateway 的 Provider 双 revision、Channel 控制、运行态代际围栏和故障恢复当前行为。
 status: active
 owner: 网关团队
-last_updated: 2026-07-28
+last_updated: 2026-07-31
 related:
   - ../glossary.md
   - admission-control.md
@@ -21,7 +21,7 @@ Gateway 通过 revision、payload hash、durable operation 和 runtime state epo
 基础设施故障均 fail closed。
 
 已经取得 permit 并开始 transport 的调用不会因普通 control、Provider 或 Channel revision 更新而取消；usage、
-账务和审计继续，资源按 permit 固化身份收口，旧 breaker/evidence/TTFT 反馈成为 stale。integrity epoch 换代
+账务和审计继续，资源按 permit 固化身份收口，旧 breaker/evidence 反馈成为 stale。integrity epoch 换代
 会阻止旧 token/permit 的主动终结，资源只能等待租约或 TTL。
 
 ## 当前事实层次
@@ -40,7 +40,7 @@ Gateway 通过 revision、payload hash、durable operation 和 runtime state epo
 | Provider origin | 独立单调 `origin_revision` 与 origin fence generation |
 | Provider 状态 | 独立单调 `status_revision` 与 status fence generation |
 | Channel 路由配置 | `config_revision`；状态、timeout、credential 或 credential validity 真变化时推进 |
-| Channel 限额 | 独立 `admission_limits_revision` |
+| Channel 并发容量 | 独立 `capacity_revision` |
 | 关键 app setting | 每项独立 revision 与 active/pending control |
 | breaker | Provider 与 Channel 各自 state generation |
 | 整体运行态 | state epoch + epoch revision |
@@ -50,7 +50,7 @@ Provider 地址和状态的 revision、pending 与 fence 互相独立；普通 P
 
 ## 普通运行控制发布
 
-关键 app setting 与 Channel admission limits 通过 `runtime_control_operations` 发布：
+四个关键 app setting 与 Channel capacity 通过 `runtime_control_operations` 发布：
 
 1. PostgreSQL 创建不可变 token、目标、current/next revision 和 payload hash，operation 为 preparing。
 2. Redis Prepare 校验单调 revision、payload hash 和当前 pending，建立 pending fence。
@@ -61,9 +61,9 @@ Prepare 或数据库提交前失败可以 Abort；db_committed 后只能恢复 C
 当前业务行重建规范 payload，任何 hash、pending、目标或业务事实冲突都停止恢复并保持 fail closed。
 
 Gateway 与 Admin 的首次启动协调运行在停机重启模型下：先收口 PostgreSQL 中未终结的 durable operation，再以
-PostgreSQL 当前稳定事实为权威，原子重建缺失或漂移的关键 app setting 与 Channel admission control。启动重建
+PostgreSQL 当前稳定事实为权威，原子重建缺失或漂移的四个关键 app setting 与 Channel capacity control。启动重建
 会覆盖 Redis 中落后、超前、payload 不同或残留 pending 的单个 control，并清除该 control 的 pending 字段；
-不会清除独立的限流桶、并发租约、request token、Sticky、breaker 或其他运行态 key。进程启动后的周期
+不会清除请求层限流桶、并发租约、request token、Sticky、breaker 或其他运行态 key。进程启动后的周期
 Reconciler 不使用权威覆盖，仍只补缺失并严格拒绝已有冲突，避免干扰运行中的 Admin 发布。
 
 ## Provider 路由事实发布
@@ -88,14 +88,14 @@ Provider 归档遇非终态 operation 返回 conflict，不自动 Abort 或接�
 
 - ready epoch/revision、Redis server identity 和故障锁；
 - Provider origin/status revision、active/pending fence、Provider breaker/evidence；
-- Channel config/admission revision、breaker、cooldown、permission 与容量；
-- RouteRate、ChannelRate、GlobalConcurrency、CircuitBreaker 和 RoutingBalance 当前 control。
+- Channel config/capacity revision、breaker、cooldown、permission 与并发容量；
+- RouteRate、GlobalConcurrency、CircuitBreaker 和 RoutingBalance 当前 control。
 
 任一关键 control 缺失、pending、payload 非法或 revision stale 会使整批失败，并发生在请求 TPM Reserve、账务
 授权和 attempt 创建前。正常业务不可用状态只过滤相应候选。
 
 每个真实 transport 前仍以新 permit ID 执行 Acquire，强读当前 control revision 并再次校验 Provider/Channel
-围栏、breaker、permission、cooldown、限额与资源。地址不匹配是 `stale_revision`，状态不匹配是
+围栏、breaker、permission、cooldown 与 Channel 并发。地址不匹配是 `stale_revision`，状态不匹配是
 `stale_status_revision`。Store 错误或 `breaker_store_unavailable` 终止 fallback；普通 denial 可检查下一候选。
 
 Finish/Abort 在 epoch 匹配时先按 permit 固化身份收口资源，再根据 revision、fence 与 generation 应用或拒绝
@@ -117,7 +117,7 @@ epoch 保存随机身份、单调 revision 和 recovering/ready 状态，reason 
 
 ## Readiness 与故障锁
 
-`/readyz` 是只读检查，不创建 marker、恢复 control 或清 fault latch。它要求 PostgreSQL ready epoch、五项关键
+`/readyz` 是只读检查，不创建 marker、恢复 control 或清 fault latch。它要求 PostgreSQL ready epoch、四个关键
 control、无阻断 operation、Redis marker/epoch/control/payload、Provider routing operation 终态、server identity、
 reconciliation proof 和 fault latch 全部一致。
 
@@ -141,7 +141,7 @@ Reconciler 完整核对 PostgreSQL 与 Redis 后才能清锁。
 ## 归档与在途收口
 
 Provider/Channel 归档立即清除阻止新请求所需的 breaker、cooldown/control、permission 和 evidence，但保留
-permit、并发租约和计数桶。已开始调用继续响应、usage、账务与审计；其运行反馈因生命周期或 revision 变化
+permit 与并发租约。已开始调用继续响应、usage、账务与审计；其运行反馈因生命周期或 revision 变化
 成为 stale/no-op。异常残留由租约和 TTL 回收。
 
 ## 安全与可观测性

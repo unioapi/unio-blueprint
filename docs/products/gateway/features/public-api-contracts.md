@@ -129,13 +129,12 @@ middleware 处理的 correlation ID。
 | 条件 | 行为 |
 | --- | --- |
 | OpenAI Chat Completions 流式成功 | 以 data-only SSE 输出 Chat chunk，并在可选 usage 尾包后写出 `[DONE]`。 |
-| Responses 原生直传成功 | 转发上游 Responses 命名 SSE 并恢复 Unio 模型回显；终态事件来自上游，不追加 `[DONE]`。 |
+| Responses 原生直传成功 | 转发上游 Responses 命名 SSE 并恢复 Unio 模型回显；上游终态暂存到 settlement/recovery 接管后原样交付，不追加 `[DONE]`。 |
 | Responses Chat 桥接成功 | 合成当前 Chat 映射器支持的最小事件族与单调递增 `sequence_number`；映射后的 token usage 只在终态 Response 中出现，不发送 `[DONE]`。 |
 | Anthropic 流式成功 | 以 Anthropic 命名 SSE 事件输出，并以 `message_stop` 结束。 |
 | 首个客户可见事件前失败 | 可返回普通协议错误；允许在同协议候选间尝试替代路径。 |
 | 首个客户可见事件后失败 | 不改变 HTTP 状态；输出协议原生流式错误，且不伪造成功终态。 |
-| Chat、Messages 或 Responses bridge 的账务恢复事实无法持久化 | Gateway 不输出由自身生成的 `[DONE]`、`message_stop` 或 Responses 成功完成事件。 |
-| Responses 原生直传已收到上游成功终态后，账务恢复事实无法持久化 | 上游 `response.completed` 可能已经透传；Gateway 无法撤回该终态，随后按失败路径收口。 |
+| 流式请求的账务恢复事实无法持久化 | Gateway 不输出 `[DONE]`、`message_stop` 或 Responses 成功终态；直传已捕获的上游成功终态也会丢弃。 |
 
 流式 usage 是否对客户输出由公开协议字段控制；网关为结算所需的可靠用量不依赖客户是否
 请求展示该字段。

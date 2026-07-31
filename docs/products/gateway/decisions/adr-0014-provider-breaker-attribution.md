@@ -3,7 +3,7 @@ title: "ADR-0014：Provider 与 Channel 熔断归因"
 description: "定义真实上游结果进入 Provider 与 Channel breaker、证据、冷却和权限闸门的当前规则。"
 status: active
 owner: 网关团队
-last_updated: 2026-07-27
+last_updated: 2026-07-31
 related:
   - ../features/resilience-circuit-breakers.md
   - ../features/routing-load-balancing.md
@@ -23,7 +23,7 @@ Origin breaker 或 Origin key。
 
 - 公共地址和公共故障必须按 Provider 隔离，不能因单凭据或单模型问题摘除整个 Provider。
 - 只有已经开始真实上游 transport 的结果可以影响 breaker。
-- 429、403、401、breaker 与 Channel TTFT 必须保持不同责任边界。
+- 429、403、401、breaker 与 Channel TTFT/错误率评分样本必须保持不同责任边界。
 - 多 Gateway 必须共享同一状态机、half-open 权利与证据事实。
 
 ## 备选方案
@@ -59,7 +59,7 @@ Provider breaker 承担公共连接、地址和服务故障；Channel breaker �
 1. Provider 与 Channel 各自在 Redis 维护 `closed`、`open`、`half_open`、generation、eligible 窗口、连续
    失败、open level 和 half-open lease；多个 Gateway 共享状态。
 2. 只有 timing observer 已记录 transport start 的调用进入 Finish。transport 前失败走 Abort，只释放 permit
-   资源，不写 breaker、Provider evidence 或 Channel TTFT。
+   资源，不写 breaker、Provider evidence 或 Channel 评分样本。
 3. 有有效协议 facts 的成功结果同时形成 Provider 与 Channel `eligible_success`。401、403、429、其他 4xx、
    客户取消和未分类本地错误对两层 breaker 均为 `ignored`。
 4. HTTP 502/503/504、无状态 server error、发送/握手/响应头 timeout、连接重置、代理截断和同类 stream
@@ -92,7 +92,7 @@ Provider breaker 承担公共连接、地址和服务故障；Channel breaker �
 
 ### 中性影响或后续工作
 
-- Channel TTFT 仍只保存 stream-only attempt 口径，不提升到 Provider。
+- Channel TTFT 仍只使用 stream-only attempt 口径，并以独立分钟桶参与评分，不提升到 Provider 或 breaker。
 - 公开错误继续隐藏 Provider、Channel、地址、breaker key 和内部归因码。
 
 ## 风险与缓解措施
@@ -119,4 +119,3 @@ Provider breaker 承担公共连接、地址和服务故障；Channel breaker �
 - [韧性与熔断器](../features/resilience-circuit-breakers.md)
 - [路由负载均衡](../features/routing-load-balancing.md)
 - [ADR-0013：Provider 运行态代际围栏](adr-0013-provider-runtime-fencing.md)
-

@@ -102,8 +102,7 @@ Gateway 只在能够从以下事实证明恢复时间时返回 `Retry-After`：
 | 尚未写出客户流事件 | 可以切换候选；最终失败时仍可使用正常 HTTP 状态和协议错误信封。 |
 | 已写出客户流事件 | HTTP 状态已经提交，不能再变更；Gateway 尽力写入入口协议的流式 error event 后中断。 |
 | 客户取消 | 终止当前流，不切换候选。 |
-| Gateway 生成成功终态前结算或 recovery 建立失败 | 省略成功终态并写流式错误。 |
-| 原生 Responses 已收到 `response.completed` | 该事件当前先透传；随后 settlement 或 recovery 失败不能撤回已交付的成功终态。 |
+| 成功终态交付前结算或 recovery 建立失败 | 省略 Gateway 生成或从 Responses 直传捕获的成功终态，并写流式错误。 |
 | 原生 Responses 收到内联 rate limit 失败事件 | 保留已提交的 HTTP 状态，按上游 `rate_limit` 收口并反馈实际 Channel cooldown，不作为 Gateway 本地限流。 |
 
 Chat 流不会在已开流后写普通 JSON 错误；Messages 使用 Anthropic `error` 事件；Responses 使用受控的
@@ -123,7 +122,7 @@ DeepSeek Adapter 的字段 Drop 和 Anthropic beta policy 当前只形成应用�
 - fallback 只保留最后一个可重试上游错误，没有完整候选错误聚合。
 - `Retry-After` 只来自最终错误或 cooldown，不能表达更早候选的最早恢复时间。
 - Anthropic API Key 认证失败发生在协议 handler 前，当前不是 Anthropic 原生错误信封。
-- 流开始后无法改变 HTTP 状态；原生 Responses 的成功终态还可能早于 settlement recovery 持久化。
+- 流开始后无法改变 HTTP 状态；Gateway 通过延迟成功终态避免在 settlement recovery 持久化前向客户宣告完成。
 - Provider 原始 body 只可作为受限 snippet 参与内部判断，没有进入普通审计；Drop 诊断也没有持久审计。
 
 ## 状态说明

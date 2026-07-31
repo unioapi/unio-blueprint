@@ -3,7 +3,7 @@ title: "ADR-0011：运行时部署边界"
 description: "记录 Gateway 当前进程、PostgreSQL、Redis、健康探针与运行控制边界。"
 status: active
 owner: 网关团队
-last_updated: 2026-07-28
+last_updated: 2026-07-31
 related:
   - ../features/admission-control.md
   - ../features/runtime-control-recovery.md
@@ -37,8 +37,8 @@ related:
    BreakerStore `Ping`。Admin 不调用这两项检查。生产 Admin 入口仍要求 PostgreSQL 与 Redis client 成功打开。
    `worker-server sync-models` 只连接 PostgreSQL。
 6. Gateway 启动时确保 runtime state epoch，开始一次全量 reconciliation，先收口 Provider 与普通 durable
-   operation，再以 PostgreSQL 当前稳定事实为权威修复 Provider、五项关键 app setting 与全部 Channel
-   admission control，最后提交 instance reconciliation proof。启动修复只重建对应 control/marker，不清限流桶、
+   operation，再以 PostgreSQL 当前稳定事实为权威修复 Provider、四个关键 app setting 与全部 Channel
+   capacity control，最后提交 instance reconciliation proof。启动修复只重建对应 control/marker，不清请求限流桶、
    并发租约、request token、Sticky 或 breaker；任一步返回错误仍使装配失败。运行期后台 reconciler 每 5 秒
    使用严格模式，只补缺失且不覆盖已有冲突。
 7. Admin 在 PostgreSQL pool 和非 nil Redis client 下以同样的 DB 权威模式执行一次启动 control
@@ -47,7 +47,7 @@ related:
    接受 nil Redis；该路径下普通 settings 使用 PostgreSQL/default 与本地缓存，不装配 runtime-control
    publisher/fencer。常驻 Worker 不运行 control reconciler。maintenance CLI 只编排 state epoch 的
    `begin`、`commit` 与 `release`。
-8. Gateway `/healthz` 固定返回 200。`/readyz` 每次读取 PostgreSQL 的 ready epoch、五项关键 control revision
+8. Gateway `/healthz` 固定返回 200。`/readyz` 每次读取 PostgreSQL 的 ready epoch、四个关键 control revision
    与相关 operation 终态，然后 Ping Redis 并原子核验 marker、control active/pending/revision/payload hash、
    instance reconciliation proof 与 fault latch；响应体只返回 `ready` 或 `not_ready`。普通 `/readyz` 不扫描
    全部 Provider/Channel control，也不检查 migration 或 schema version。
@@ -77,8 +77,8 @@ half-open lease 接管，以及 Cluster verifier 拒绝与跨 slot 多键 Lua �
 | DEC-043 | 2026-07-21 | accepted，来源称已实现，部分修订 | 当前 Redis control、revision、durable operation 与 reconciliation。 |
 | DEC-050 | 2026-07-21 | accepted，来源标注待实现 | 来源中的停机空库重建只描述可重建开发环境，不是当前生产数据迁移流程。 |
 | DEC-051 | 2026-07-21 | accepted，来源标注待实现 | 当前单地址 Redis client，以及 Gateway、Worker 和 maintenance 的非 Cluster 与 Redis 7+ 检查。 |
-| DEC-053 | 2026-07-23 | accepted，来源称已实现，部分修订 | 当前默认不限与计数行为；作用域由 DEC-054 修订。 |
-| DEC-054 | 2026-07-23 | accepted，来源称已实现 | 当前 Route request admission 与 Channel candidate admission 的独立 control 与 key。 |
+| DEC-053 | 2026-07-23 | accepted，来源称已实现，部分修订 | Route 请求层默认不限与计数继续有效；Channel 三维限额已移除。 |
+| DEC-054 | 2026-07-23 | accepted，来源称已实现，部分修订 | Route request admission 保留；Channel control 已收窄为并发 capacity。 |
 
 ## 取代关系
 

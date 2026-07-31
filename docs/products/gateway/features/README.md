@@ -3,7 +3,7 @@ title: Gateway（网关）功能设计
 description: 网关自有功能与内部调度行为的产品级设计索引。
 status: active
 owner: 网关团队
-last_updated: 2026-07-28
+last_updated: 2026-07-31
 related:
   - ../README.md
   - ../overview.md
@@ -53,7 +53,7 @@ Gateway 的公开入口、Provider 映射、请求与账务生命周期、模型
 | [预付账务与结算](billing-settlement.md) | active | 授权、结算、核销、快照和恢复不变量。 |
 | [模型能力与目录](model-capabilities-catalog.md) | active | 外部目录、能力字典、模型声明与 Adapter 画像边界。 |
 | [准入控制](admission-control.md) | active | 请求层与候选层的原子资源取得和收口。 |
-| [路由负载均衡](routing-load-balancing.md) | active | balanced 四项客观分、确定性顺序与 Channel Sticky。 |
+| [路由负载均衡](routing-load-balancing.md) | active | balanced 五项客观分、原子并发、CAS Sticky、分阶段超时与完整 trace。 |
 | [熔断与韧性](resilience-circuit-breakers.md) | active | 上游责任归因、breaker 与恢复退避。 |
 | [运行控制与恢复](runtime-control-recovery.md) | active | 配置代际、围栏、发布和 fail-closed 恢复。 |
 | [数据生命周期](data-lifecycle.md) | active | Provider、Channel 与 Route 的归档、恢复和引用保护。 |

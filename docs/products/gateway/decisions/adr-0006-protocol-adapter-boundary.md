@@ -60,8 +60,9 @@ Responses 是 OpenAI 协议族下的端点，不是第三个协议族。
    `ResponseFacts`。settlement、recovery 和审计不反向解析公开响应；两个协议族与
    Responses 直传/bridge 共用 attempt、usage、结算和恢复不变量。
 8. 公开错误与 SSE 按入口协议渲染。Chat 成功流以 `[DONE]` 结束，Messages 以
-   `message_stop` 结束，Responses 使用命名终态事件且不发 `[DONE]`。首个客户可见事件后
-   发生错误时不改写 HTTP 状态，只尝试写协议内错误并中断，不伪造成功终态。
+   `message_stop` 结束，Responses 使用命名终态事件且不发 `[DONE]`。Gateway 生成的终态与 Responses
+   直传捕获的上游成功终态都在 settlement 或 durable recovery 接管后才交付。首个客户可见事件后发生
+   错误时不改写 HTTP 状态，只尝试写协议内错误并中断，不伪造成功终态。
 
 ## 当前边界
 
@@ -77,8 +78,6 @@ Responses 是 OpenAI 协议族下的端点，不是第三个协议族。
 - `/v1/responses/input_tokens` 始终取 Route 计划的第一个 OpenAI 候选，先映射为 Chat
   再使用 Chat tokenizer。它不使用原生 Responses tokenizer，也不执行生成请求的候选能力
   过滤、运行态准入、fallback、请求记录或计费。
-- 原生 Responses 流的上游成功终态可能在 settlement recovery 事实持久化前已经转发给
-  客户；后续结算失败时 Gateway 无法撤回该终态。
 
 ## 来源与取代谱系
 

@@ -3,7 +3,7 @@ title: "ADR-0001：统一领域术语（协议 / 端点 / 历史上游源站）"
 description: "记录 Gateway 的协议与端点术语，并保留已被 ADR-0012 取代的 Provider Origin 谱系。"
 status: active
 owner: 网关团队
-last_updated: 2026-07-27
+last_updated: 2026-07-31
 related:
   - README.md
   - ../glossary.md
@@ -33,9 +33,9 @@ Provider 表示上游供给或结算主体，保存唯一 `origin`，不保存 C
 凭据、`protocol`、`adapter_key` 和成本配置，并直接挂在一个 Provider 上。一个 Protocol 包含多个 Endpoint；
 Channel 是否能服务某个 Endpoint 由当前 `(protocol, adapter_key, operation capability)` 决定。
 
-Balanced 路由的 stream-only TTFT EWMA 只保存在 Channel 运行态并从 Channel 快照参与评分。Provider 保存
-公共 breaker 与围栏事实，不保存该 TTFT EWMA。请求客户首帧时间和 request attempt 的上游首 token 时间
-是独立事实。
+Balanced 路由的 TTFT 评分样本只来自 stream-only request attempt 的上游首字，并按时间窗口聚合为算术平均值。
+Provider 保存公共 breaker 与围栏事实，不保存 Channel TTFT。Gateway TTFT（`gateway_first_token_at`）与
+attempt 上游首字时间是独立事实，见 [ADR-0017](adr-0017-authoritative-first-token.md)。
 
 `ProviderEndpoint` 和 `Provider Origin` 只作为历史来源名称保留；当前 Blueprint 与 Gateway 使用 Provider 的
 `origin` 字段。权威定义维护在[网关词汇表](../glossary.md)。
@@ -51,8 +51,9 @@ Adapter operation capability 选择候选和执行路径。
 - 取代：无
 - 被取代：[ADR-0012](adr-0012-provider-channel-route-lifecycle.md) 取代 Provider Origin 领域模型部分；
   Protocol 与 Endpoint 术语继续有效。
-- 迁移事实校正：2026-07-26 按当前代码、Redis 写入脚本和评分读取链路，移除“Provider Origin 承载
-  流式 TTFT EWMA”的旧表述；这是现状校正，不建立 ADR 取代关系。
+- 迁移事实校正：2026-07-31 按当前代码和评分样本链路，Channel TTFT 从运行态 EWMA 改为 request attempt
+  时间窗口算术平均；同日再按 ADR-0017 将评分样本明确为上游有效生成 Token，并与 Gateway TTFT 拆分。
+  这些是实现事实校正，不改变本文 Protocol 与 Endpoint 决策。
 
 ## 状态说明
 
@@ -64,3 +65,4 @@ Adapter operation capability 选择候选和执行路径。
 - [网关词汇表](../glossary.md)
 - [ADR-0009：客观 Balanced 路由](adr-0009-objective-balanced-routing.md)
 - [ADR-0011：运行时部署边界](adr-0011-runtime-deployment-boundaries.md)
+- [ADR-0016：五项客观路由、原子容量与 CAS Sticky](adr-0016-five-factor-routing-and-cas-sticky.md)

@@ -3,7 +3,7 @@ title: "ADR-0012：Provider、Channel 与 Route 供给生命周期"
 description: "定义 Origin 并入 Provider 后的供给关系、状态不变量以及编辑、启停、归档与恢复规则。"
 status: active
 owner: 网关团队
-last_updated: 2026-07-27
+last_updated: 2026-07-31
 related:
   - ../features/data-lifecycle.md
   - ../features/admission-control.md
@@ -112,9 +112,10 @@ Provider 是上游总闸，Channel 是具体供给单元，Route 是面向客户
 
 - Channel 或 Provider 归档提交后立即阻止新请求进入，但已经取得 permit 或已经开始 transport 的请求继续完成
   响应、usage、结算和资源收口。
-- 归档可以立即清理 breaker、cooldown、permission 和新的准入 control，但不得立即删除在途 permit、Channel
-  并发租约及 RPM/RPD/TPM 桶；这些资源由 `Finish` / `Abort` 收口，异常残留由 TTL 回收。
-- 在途结果对已归档实体的 breaker 或 TTFT 更新应成为 stale/no-op；资源释放必须先于该结果判断完成。
+- 归档可以立即清理 breaker、cooldown、permission 和新的 capacity control，但不得立即删除在途 permit 或
+  Channel 并发租约；这些资源由 `Finish` / `Abort` 收口，异常残留由 TTL 回收。
+- 在途结果对已归档实体的 breaker/evidence 更新应成为 stale/no-op；资源释放必须先于该结果判断完成，
+  request attempt 时间和评分样本仍按已发生事实保存。
 
 ## 影响
 

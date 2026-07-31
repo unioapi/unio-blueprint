@@ -3,7 +3,7 @@ title: "ADR-0013：Provider 运行态代际围栏"
 description: "以 Provider 的独立 origin/status revision、Channel revision 与整体运行态代际隔离迟到结果。"
 status: active
 owner: 网关团队
-last_updated: 2026-07-28
+last_updated: 2026-07-31
 related:
   - ../features/runtime-control-recovery.md
   - ../features/data-lifecycle.md
@@ -65,18 +65,18 @@ control 继续维护各自 revision，permit 固化本次调用需要的全部�
    operation 只归属 `provider_id`；并发修改按 Provider、operation 的顺序锁定，不存在 Origin 扇出或组合更新。
 3. Redis 分别维护 Provider 当前 origin/status revision、active/pending 状态、各自 fence generation 和 Provider
    breaker generation。地址或状态 Prepare 推进对应 fence；Commit/Abort 只处理该变更的 pending 状态。
-4. Channel 保存 `provider_id`、自身 config/admission revision、凭据和调度配置。Provider 地址或状态变化不改写
+4. Channel 保存 `provider_id`、自身 config/capacity revision、凭据和调度配置。Provider 地址或状态变化不改写
    Channel revision；Channel 配置变化也不推进 Provider revision。
 5. 候选快照和每次 `AttemptPermit` Acquire 都校验 ready runtime epoch、Provider 双 revision/pending、Channel
    revision、关键 control 与相应 generation。地址不匹配返回 `stale_revision`，状态不匹配返回
    `stale_status_revision`。
 6. permit 固化 Provider 双 revision、双 fence generation、Provider/Channel breaker generation 和原始资源桶
-   身份。普通 revision 或 generation 变化后，Finish/Abort 仍先完成并发、限额、usage 和终态收口，再将旧
-   breaker、evidence 或 TTFT 写入判为 stale/no-op。
+   身份。普通 revision 或 generation 变化后，Finish/Abort 仍先完成并发、usage 和终态收口，再将旧
+   breaker 或 evidence 写入判为 stale/no-op；request attempt 的时间和结果仍保存。
 7. runtime epoch 换代仍是例外：旧 token/permit 的主动 Finalize、Finish 或 Abort 在 Redis 调用前被拒绝，
    资源依赖租约或 TTL 回收。
 8. Provider 归档立即清理 breaker、cooldown、control、permission 和 evidence，阻止新准入；不得清理在途
-   permit、并发租约和计数桶。归档后迟到的运行反馈为 stale/no-op，但资源必须完成收口。
+   permit 与并发租约。归档后迟到的运行反馈为 stale/no-op，但资源必须完成收口。
 9. 启动 Reconciler 先收口 PostgreSQL durable operation，再以 PostgreSQL 当前 Provider/Channel/control 稳定事实
    为权威修复缺失或漂移的 Redis control；Provider 正常 Hash 保留 breaker 状态，只校正双 revision、status、
    pending 与 fence。运行期周期 Reconciler 仍只补缺失；已存在状态若 revision、pending、payload hash 或业务

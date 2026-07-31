@@ -1,12 +1,13 @@
 ---
 title: "ADR-0015：确定性成本感知路由与 Channel Sticky"
 description: "以经济、健康、容量和 Priority 客观分确定候选顺序，并把 Sticky 策略归属到 Channel。"
-status: active
+status: superseded
 owner: 网关团队
-last_updated: 2026-07-28
+last_updated: 2026-07-31
 related:
   - ../features/routing-load-balancing.md
   - ../features/admission-control.md
+  - adr-0016-five-factor-routing-and-cas-sticky.md
   - ../../admin/pages/provider-channel-management.md
   - ../../admin/features/operations-observability.md
   - adr-0007-atomic-admission-control.md
@@ -14,6 +15,9 @@ related:
 ---
 
 # ADR-0015：确定性成本感知路由与 Channel Sticky
+
+> 本 ADR 保留四项评分和 Sticky 首候选短等的历史决策。当前行为由
+> [ADR-0016](adr-0016-five-factor-routing-and-cas-sticky.md) 取代。
 
 ## 背景
 
@@ -116,7 +120,7 @@ Redis。
 
 - 取代：[ADR-0009：Balanced 路由](adr-0009-objective-balanced-routing.md)；并修订
   [ADR-0007](adr-0007-atomic-admission-control.md)中“任意首候选可短等”的范围。
-- 被取代：无。
+- 被取代：[ADR-0016：五项客观路由、原子容量与 CAS Sticky](adr-0016-five-factor-routing-and-cas-sticky.md)。
 
 ## 参考资料
 

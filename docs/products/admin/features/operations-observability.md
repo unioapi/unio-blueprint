@@ -39,12 +39,16 @@ related:
 ### 功能需求
 
 - Provider、Channel、模型、线路和 Dashboard 并列展示客观事实：Provider 双 revision 与 breaker、凭据状态、
-  主动检测、eligible 错误率与样本、Channel 路由 TTFT EWMA、流式请求客户首帧 TTFT、attempt 上游 TTFT、
-  流式/非流式总耗时、容量与临时超限、运行态同步、经济/健康/容量/Priority 四项分数、最终得分和实际分流。
+  主动检测、eligible 错误率与样本、Channel 最近 30 分钟平均上游 TTFT、请求 Gateway TTFT、attempt 上游
+  TTFT、流式/非流式总耗时、容量与临时超限、运行态同步、成本/并发容量/TTFT/错误率/Priority 五项分数、
+  最终得分和实际分流。
 - 当前“可服务/不可服务/基础设施故障”只能由当前硬门禁和运行态 readiness 直接推导；基础设施故障必须明确表示准入已拒绝，并与无样本区分。
-- Channel 路由 EWMA 只使用流式 attempt 中协议定义的 `FirstTokenEligible` 样本；请求级 TTFT 使用首个客户写帧，attempt 上游 TTFT 使用真实 transport 起点。三者不得合并，非流式只显示总耗时。stale 版本不得展示旧的 open、Channel TTFT 或评分。
-- 系统设置展示经济、健康、容量与 Priority 四项整数百分比，实时显示合计；合计不为 100 时禁止保存。
-  Route runtime 同时展示算法版本、四项分数、四项权重和最终得分；旧 trace 缺字段时保留旧视图。
+- Channel TTFT 评分只使用流式 attempt 从 transport start 到有效生成 Token 的样本，并按最近 30 分钟窗口
+  做算术平均；请求级 Gateway TTFT 使用业务建档到对应有效生成 Token 成功写入客户的时间。两者不得互相
+  代填，非流式只显示总耗时。stale 版本不得展示旧的 breaker、Channel TTFT 或评分。
+- 系统设置展示成本、并发容量、TTFT、错误率与 Priority 五项整数百分比，实时显示合计；合计不为 100 时
+  禁止保存。Route runtime 同时展示算法版本、五项分数、五项权重、完整计算过程和最终得分；旧 trace 缺字段
+  时保留旧视图。
 - 首页为决策层，仅显示 8 项 KPI、本期与上期同长度窗口比较和状态 Banner；不放逐项明细、排行榜或 Token 拆解。
 - 金额按币种拆卡；利润率只在同币种内计算；缓存贡献是反事实估算，必须标为“估算”。
 - 二级分析中心和实时监控页使用独立视图与数据源。实时 QPS、TPS、RPM、TPM、P99 和错误率不得伪装为数据库经营聚合。
@@ -58,7 +62,7 @@ Provider 列表不逐行读取 Redis 运行态，详细运行态属于 Provider 
 
 | 状态或条件 | 预期行为 | 恢复方式 |
 | --- | --- | --- |
-| Channel 无路由 TTFT 样本 | 不显示或明确 `ttft_samples=0`；合法 0ms 样本仍有正样本数 | 等待真实流式 attempt 经 permit `Finish` 应用。 |
+| Channel 无上游 TTFT 样本 | 显示样本为零，TTFT 维按满分参与评分；合法 0ms 样本仍有正样本数 | 等待真实流式 attempt 解析出有效生成 Token。 |
 | Channel 当前配置尚无运行身份 | 按无样本展示；runtime Channel revision 为空不视为版本不一致，不隐藏当前容量与评分 | 首次真实请求取得 permit 时延迟建立运行身份。 |
 | 运行态基础设施故障 | 显示准入已拒绝，不回退为“健康”或无样本 | 运行态恢复与对账后重新观察。 |
 | 配置版本 stale | 不展示旧 breaker、Channel TTFT 或评分 | 等待当前版本事实。 |
@@ -74,5 +78,5 @@ Provider 列表不逐行读取 Redis 运行态，详细运行态属于 Provider 
 - [ ] 页面没有主观健康标签、阈值配置、筛选或派生健康分桶。
 - [ ] 当前可服务性、基础设施故障和无样本在页面上可区分。
 - [ ] 首页不跨币种相加，缓存贡献标为估算。
-- [ ] 请求客户首帧、attempt 上游 TTFT 与 Channel 路由 EWMA 分别标明口径；非流式不展示伪造的 TTFT，stale 版本不展示旧运行态事实。
-- [ ] 四项评分、权重合计、最终得分和实际分流可区分；旧 trace 不伪造缺失的新评分字段。
+- [ ] 请求 Gateway TTFT 与 attempt/Channel 上游 TTFT 分别标明口径；非流式不展示伪造的 TTFT，stale 版本不展示旧运行态事实。
+- [ ] 五项评分、逐项计算过程、权重合计、最终得分和实际分流可区分；旧 trace 不伪造缺失的新评分字段。
