@@ -3,7 +3,7 @@ title: Home（首页）
 description: 面向开发者和 AI 应用团队介绍 UnioAPI，并引导获取 API Key 或查看接入文档的首页草稿。
 status: draft
 owner: 官网团队
-last_updated: 2026-07-26
+last_updated: 2026-07-31
 related:
   - README.md
   - ../overview.md
@@ -43,7 +43,7 @@ OpenAI 或 Anthropic 协议调用模型，由平台在线路边界内处理协�
 
 ## 目标
 
-- 在首屏明确展示 `UnioAPI` 品牌和“一个入口，调用你需要的 AI 模型”的核心定位。
+- 在首屏明确展示 `UnioAPI` 品牌和“模型不断变化。入口保持统一。”的核心定位。
 - 准确表达 OpenAI-compatible 与 Anthropic-compatible 协议兼容，不暗示官方合作或完整兼容。
 - 解释统一入口、线路内多模型访问、候选选择和失败切换的价值，但不使用不可验证的绝对承诺。
 - 提供清晰的“获取 API Key”“接入文档”和“查看定价”入口。
@@ -150,7 +150,7 @@ Gateway 契约。
 ### 首屏
 
 - H1：`UnioAPI`
-- 主标题：`一个入口，调用你需要的 AI 模型。`
+- 主标题：`模型不断变化。入口保持统一。`
 - 正文：`兼容 OpenAI 与 Anthropic 协议，把多上游适配、线路调度和失败切换留给平台。你只管使用熟悉的 SDK 构建产品。`
 - 主按钮：`获取 API Key`
 - 次按钮：`接入文档`

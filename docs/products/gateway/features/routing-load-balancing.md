@@ -123,6 +123,10 @@ Sticky 是客观排序后的会话亲和提示，不保证缓存命中，也不�
 请求错误、未分类错误和 Gateway 自身的 Store、结算或运行态故障不改变绑定。Sticky Redis 读写失败 fail open，
 不会阻断主请求。
 
+候选快照在排序前发现绑定 Channel 处于 cooldown，并以 `rate_limited` 将它排除时，同样属于临时绕行：不得记录
+`pin_lost` 或调用 `ClearIfCurrent`，绕行 Channel 成功后也不得建立新绑定。Routing trace 使用
+`sticky_cooldown_bypass` 区分这种情况与真正的 `sticky_invalid`，并在候选事实中保留 cooldown 剩余时间。
+
 ## 分阶段超时
 
 Channel 只配置两个可继承字段：
