@@ -3,7 +3,7 @@ title: Gateway 错误语义
 description: Gateway 的当前内部分类、fallback、协议错误包络与敏感信息边界。
 status: active
 owner: 网关团队
-last_updated: 2026-07-29
+last_updated: 2026-08-01
 related:
   - ../README.md
   - public-api-contracts.md
@@ -54,13 +54,14 @@ Adapter 当前使用以下稳定类别：`rate_limit`、`timeout`、`bad_request
 | `timeout` | 是 | 504 |
 | `server_error` | 是 | 502 |
 | `auth` | 是 | 502 |
-| `permission` | 否 | 502 |
+| `permission` | 仅明确 HTTP 403 | 502 |
 | `bad_request` | 否 | 400 |
 | `canceled` | 否 | 按取消路径终止，不启动 fallback |
 | `unknown` 或没有稳定类别 | 否 | 502 或对应 Gateway 安全错误 |
 
-`auth` 可以切换候选，最终渲染为上游 502，不会成为客户 401。`permission` 和 `bad_request` 不切换。
-客户端取消不作为上游故障，也不触发替代调用。
+`auth` 可以切换候选，最终渲染为上游 502，不会成为客户 401。明确携带 HTTP 403 metadata 的
+`permission` 会在当前 Channel-Model 权限暂停写入成功后切换候选；缺少 403 metadata 的 `permission` 与
+`bad_request` 不切换。客户端取消不作为上游故障，也不触发替代调用。
 
 OpenAI Chat、OpenAI Responses 与 Anthropic Messages 各自把同一上游类别渲染成协议原生错误类型和安全
 文案；HTTP 状态映射保持上表一致。
@@ -68,7 +69,8 @@ OpenAI Chat、OpenAI Responses 与 Anthropic Messages 各自把同一上游类�
 OpenAI Responses 原生流中的 `response.failed` 或 `error` 事件会按稳定错误 code 分类。`rate_limit`、
 `rate_limit_error` 和 `rate_limit_exceeded` 归为上游 `rate_limit`，即使该 SSE transport 的真实 HTTP 状态是
 200；内部仍记录上游状态类 failure code 与真实 HTTP metadata，不改写为 Gateway 自身的请求级或候选准入
-限流。该错误可以切换同模型候选，并在 permit Finish 确认后为实际 Channel 写入 cooldown。
+限流。该错误可以切换同模型候选，并在 permit Finish 确认后为实际 Channel 写入 cooldown。HTTP 200 内联
+错误即使被分类为 `permission`，也不满足“明确 HTTP 403”的切换条件。
 
 ## 候选拒绝与错误收口
 

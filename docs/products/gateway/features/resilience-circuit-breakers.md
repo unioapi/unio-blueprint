@@ -3,7 +3,7 @@ title: 韧性与熔断器
 description: Gateway 对真实上游故障按 Provider 与 Channel 归因、隔离、恢复和解释的当前行为。
 status: active
 owner: 网关团队
-last_updated: 2026-07-31
+last_updated: 2026-08-01
 related:
   - ../glossary.md
   - admission-control.md
@@ -86,6 +86,7 @@ Channel config revision、两层 breaker generation、half-open 权利、模型�
 - 上游 rate limit cooldown 取 `Retry-After` 或当前默认值，按 Channel 保存；Responses SSE 内联失败即使 transport
   HTTP 状态为 200，也按错误 code 进入同一反馈。Provider/Channel breaker reset 都不清除 cooldown。
 - 403 permission pause 固化 Channel、Model、Channel config revision 与 Provider 双 revision，只通过精确复检恢复。
+  若客户尚未收到任何帧，且权限暂停写入成功，当前请求继续扫描下一候选；缺少明确 403 metadata 时不切换。
 
 这些反馈只在 permit Finish 已确认后写入。写入 Store 失败终止普通 fallback，避免在反馈状态未知时继续调用。
 

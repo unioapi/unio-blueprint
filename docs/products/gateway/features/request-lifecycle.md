@@ -3,7 +3,7 @@ title: Gateway 请求生命周期
 description: 请求从身份确认到协议交付、结算与恢复的当前行为。
 status: active
 owner: 网关团队
-last_updated: 2026-07-31
+last_updated: 2026-08-01
 related:
   - ../README.md
   - ../glossary.md
@@ -30,7 +30,7 @@ Schema 和测试能够共同证明的行为。
 
 1. 认证调用方，为当前受保护的公开 `/v1` 请求取得一次由独立 UUID 标识的 `(Route, User Account)`
    request-admission session。Chat Completions、Responses 主操作、Responses compact 和 Messages 通过协议前置
-   校验并进入 service 后，才另行创建 `req_` 持久业务请求 ID；HTTP correlation ID 不替代这两个标识。
+   校验并进入 service 后，才另行创建 `req_` 持久业务请求 ID；HTTP `trace_id` 不替代这两个标识。
 2. 对生成或压缩请求，按入口协议和客户模型形成候选计划，过滤不支持当前 Endpoint 或传输方式的 Adapter，以及
    缺少 Channel-Model 映射的候选；模型能力声明当前不是运行时准入闸门。
 3. 对候选执行一次只读运行态快照，取得资格、Channel 并发和评分 control，再结合最近 30 分钟 attempt 样本，
@@ -45,6 +45,8 @@ Schema 和测试能够共同证明的行为。
 6. Adapter 对一个 attempt 发起一次真实调用并生成协议响应和 `ResponseFacts`。生命周期同时记录请求是否完整
    写出、是否收到响应头、是否出现协议定义的有效生成 Token。首字前协议事件先按 attempt 暂存，不向客户
    泄漏失败渠道身份；有效生成 Token 成功写出前可按稳定错误类别 fallback，向客户写出任意帧后不再切换候选。
+   明确的上游 HTTP 403 在精确 Channel-Model 权限暂停写入成功后属于可切换错误；缺少 403 metadata 的
+   `permission` 仍不可切换。
    明确未写出才 `Abort` 释放 Channel 并发；已有交互证据或结果不确定时 `Finish` 保留 Channel attempt 事实，
    并仅在取得可靠 usage 时把请求层 TPM 结算为 actual。Channel `response_timeout_ms` 区分响应头和非流式响应体
    阶段；流式首个有效生成 Token 还受 `first_token_timeout_ms`（上游首字超时）限制，之后由全局 stream-idle
@@ -122,6 +124,13 @@ Gateway TTFT（`gateway_first_token_at - started_at`）与上游 TTFT
 
 审计默认只保存协议、操作、模型、完成分类、用量、Provider/Channel 安全标识和有限诊断，不保存 prompt、
 完整响应、凭据、API Key 明文或上游错误正文。
+
+请求日志始终携带入口 `trace_id`。`request_records` 插入成功后才增加 `request_id`；取得 Permit 并成功创建
+真实 attempt 后增加 `attempt_id`；上游返回可选请求标识后才增加 `upstream_request_id`。INFO 模式用一条
+`http/request/request completed` 汇总业务请求的最终 Provider/Channel、双 TTFT、attempt/fallback、容量等待、
+Sticky、交付、结算、usage、收费和稳定错误码；临时 DEBUG 模式保存认证、完整候选评分、Sticky、Permit、
+attempt 时序、首字、交付和结算过程。四种 ID 的边界见
+[ADR-0005](../decisions/adr-0005-request-identity.md)。
 
 每个进入候选规划的请求另保存一条结构化 routing trace，从 `partial` 收口到 `complete`，记录候选资格、五项
 评分、基准与实际扫描顺序、Sticky CAS、容量等待、真实 attempt、timeout phase 和最终结果。trace 与请求记录

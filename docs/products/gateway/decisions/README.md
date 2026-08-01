@@ -44,7 +44,7 @@ related:
 | [ADR-0002](adr-0002-route-product-pricing.md) | active | API Key 绑定的 Route 供给、调度与客户定价边界。 |
 | [ADR-0003](adr-0003-billing-settlement.md) | active | 预付授权、token 结算、补扣/核销、快照与恢复边界。 |
 | [ADR-0004](adr-0004-model-capabilities.md) | active | 模型能力声明与运行时可执行能力分离。 |
-| [ADR-0005](adr-0005-request-identity.md) | active | HTTP correlation ID、持久业务请求 ID 与数据库关系键分离。 |
+| [ADR-0005](adr-0005-request-identity.md) | active | `trace_id`、持久业务请求、attempt、上游请求 ID 与数据库关系键分离。 |
 | [ADR-0006](adr-0006-protocol-adapter-boundary.md) | active | 公开协议、Adapter registry、原生与桥接路径的当前边界。 |
 | [ADR-0007](adr-0007-atomic-admission-control.md) | active | 请求和候选两层原子准入及当前收口限制。 |
 | [ADR-0008](adr-0008-runtime-state-fencing.md) | superseded | 历史 Provider Origin、Channel、control 与 runtime epoch 围栏。 |

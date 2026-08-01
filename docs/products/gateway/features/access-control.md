@@ -3,7 +3,7 @@ title: "功能设计：网关访问控制"
 description: "记录 API Key、用户账户、Route 与请求身份的当前行为。"
 status: active
 owner: 网关团队
-last_updated: 2026-07-27
+last_updated: 2026-08-01
 related:
   - ../overview.md
   - ../glossary.md
@@ -25,6 +25,10 @@ Gateway 以 API Key 鉴别调用方。有效 API Key 直接解析到 User Accoun
 - 展示前缀；
 - SHA-256 hash；
 - 完整明文 `key_plaintext`。
+
+新建 Key 的明文格式为 `sk-ant-api03-unio_<random>`，展示前缀保留同一固定前缀和随机部分前 8 位。该形状
+满足 Claude Code 对 `ANTHROPIC_API_KEY` 的本地前缀校验，也可作为 OpenAI-compatible Bearer Key 使用。
+认证只比较完整明文的 SHA-256 hash，因此此前生成的其他前缀 Key 不因生成格式变化而失效。
 
 认证只按 hash 查询。创建响应、API Key 运维列表、请求列表、更新响应和吊销响应当前可以返回完整明文；
 请求详情不包含该字段，当前也没有注册独立的 API Key 详情 HTTP 路由。历史行的 `key_plaintext` 为空时，
@@ -54,12 +58,12 @@ Admin API 当前使用单一静态 token。API Key 的创建、更新、停用�
 
 ## 请求标识
 
-- HTTP middleware 接受或生成 correlation ID，并写入响应头、request context 与 access log。
-- correlation ID 不写入 `request_records`，没有数据库唯一约束。
+- HTTP middleware 接受或生成 `trace_id`，该值等于响应 `X-Request-ID`，并写入 request context 与结构化日志。
+- `trace_id` 不写入 `request_records`，没有数据库唯一约束。
 - Chat Completions、Responses、Responses Compact 和 Messages 在进入持久请求生命周期后，生成独立的
   `req_` 业务请求 ID。
 - 持久请求记录关联 User Account、API Key、Route、业务请求 ID、attempt、usage 和账务事实。
-- correlation ID 与业务请求 ID 只在当前结构化日志字段中关联；数据库没有 correlation-to-request 映射。
+- `trace_id` 与业务请求 ID 只在当前结构化日志字段中关联；数据库没有 trace-to-request 映射。
 
 ## 公开边界
 
@@ -70,7 +74,7 @@ Admin API 当前使用单一静态 token。API Key 的创建、更新、停用�
 ## 代码与测试证据
 
 当前代码、Schema 和测试覆盖 API Key hash 认证、User Account 与 Route 解析、无效/停用/吊销 Key 拒绝、
-Route 缺失拒绝、余额授权拒绝、业务请求 ID 生成、correlation ID 分离、request history 删除保护，以及
+Route 缺失拒绝、余额授权拒绝、业务请求 ID 生成、`trace_id` 分离、request history 删除保护，以及
 prefix、hash 和完整明文的创建与读取路径。
 
 ## 状态说明

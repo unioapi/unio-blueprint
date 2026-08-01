@@ -3,13 +3,14 @@ title: 运营可观测性
 description: 管理后台以客观事实支持运行判断和经营分析的设计。
 status: draft
 owner: 管理后台团队
-last_updated: 2026-07-28
+last_updated: 2026-08-01
 related:
   - ../overview.md
   - ../quality.md
   - ../pages/operations-dashboard.md
   - ../decisions/adr-0001-objective-operational-facts.md
   - ../../gateway/decisions/adr-0015-deterministic-cost-aware-routing.md
+  - ../../../specifications/logging.md
 ---
 
 # 功能设计：运营可观测性
@@ -58,6 +59,35 @@ related:
 运营视图消费经过授权的请求、用量、账务、检测和运行态事实；不展示凭据、上游正文或内部敏感诊断。
 Provider 列表不逐行读取 Redis 运行态，详细运行态属于 Provider 详情或实时路由页面。
 
+### Gateway 日志监控
+
+“系统设置 > 日志监控”是当前 Gateway 文件日志的内置运维入口，同时提供临时 DEBUG 控制、实例应用状态
+和 Loki 基础查询，不承担日志采集、持久化、全文索引或告警计算。
+
+日志等级有三种页面模式：
+
+| 模式 | 含义 | 可执行操作 |
+| --- | --- | --- |
+| `info` | Gateway 以生产 INFO 基线运行。 | 开启 5、15、30 或 60 分钟临时 DEBUG，默认选择 15 分钟且必须填写原因。 |
+| `debug` | 全 Gateway 临时 DEBUG 会话有效。 | 查看开始/到期时间、原因、操作人和 revision；延长会话或手动关闭。 |
+| `environment_debug` | 实例由开发环境变量以 DEBUG 为启动基线。 | 不允许再创建临时会话，也不显示关闭操作。 |
+
+临时会话最长 60 分钟，没有永久选项。延长当前有效会话保留 session ID 和原开始时间，以本次提交时间重新
+计算到期点。Gateway 设置轮询应用最新 revision，并在每个实例内建立独立到期 timer；即使后续 Redis 或
+设置轮询中断，也会按已应用的 `expires_at` 自动恢复 INFO。进程重启后重新读取当前设置，已过期会话不会
+恢复 DEBUG。页面每 5 秒读取 configured Gateway 实例的实际基线、当前等级、会话 ID 和应用 revision，并以
+`applied`、`pending`、`unreachable` 或 `environment_debug` 展示，不能只把控制行写入成功当成全实例已生效。
+
+最近日志查询由 Admin Server 访问内网 Loki，浏览器不会获得 `LOKI_URL` 或直连 Loki。页面支持
+`15m/1h/6h/24h/7d` 时间范围、level、type、event、关联 ID、内容和 50/100/200 条上限筛选，结果倒序展示；
+V1 不提供分页。单条日志使用右侧详情面板展示信封与完整结构化 `data`，不把对象压成不可读文本。Loki 查询
+超时为 5 秒，不可用返回 503，非法筛选返回 400。
+
+当前部署链路为 `Gateway JSONL -> Grafana Alloy -> Loki -> Admin Server`；Grafana 不在 V1 部署范围内。
+Alloy、Loki 和 Prometheus 是独立容器与持久卷，日志仍以 Gateway 本地 JSONL 为第一份文件事实。Loki 执行
+ERROR、WARNING、HTTP 5xx、上游首字超时和结算失败规则；Prometheus 执行 Alloy 停采、Loki 不可用/写入失败
+和日志磁盘容量规则。
+
 ## 状态与边界情况
 
 | 状态或条件 | 预期行为 | 恢复方式 |
@@ -80,3 +110,5 @@ Provider 列表不逐行读取 Redis 运行态，详细运行态属于 Provider 
 - [ ] 首页不跨币种相加，缓存贡献标为估算。
 - [ ] 请求 Gateway TTFT 与 attempt/Channel 上游 TTFT 分别标明口径；非流式不展示伪造的 TTFT，stale 版本不展示旧运行态事实。
 - [ ] 五项评分、逐项计算过程、权重合计、最终得分和实际分流可区分；旧 trace 不伪造缺失的新评分字段。
+- [x] Gateway 日志页可创建有期限 DEBUG、展示逐实例应用状态，并在到期后自动恢复基线。
+- [x] 日志查询由 Admin Server 受控访问 Loki，支持固定范围和筛选，浏览器不直连日志存储。

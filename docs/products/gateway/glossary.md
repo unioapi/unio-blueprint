@@ -3,13 +3,14 @@ title: Gateway（网关）词汇表
 description: 网关当前领域术语及其实现边界。
 status: active
 owner: 网关团队
-last_updated: 2026-07-31
+last_updated: 2026-08-01
 related:
   - README.md
   - overview.md
   - ../../architecture/glossary.md
   - decisions/adr-0012-provider-channel-route-lifecycle.md
   - decisions/adr-0002-route-product-pricing.md
+  - decisions/adr-0005-request-identity.md
   - decisions/adr-0017-authoritative-first-token.md
 ---
 
@@ -31,8 +32,12 @@ related:
 | Candidate（候选）             | Route 内一个 Channel 与其上游模型映射形成的可尝试项。                                                           |
 | Route（线路）                 | API Key 绑定的客户定价与供给边界，保存模式和显式 Channel 池。                                                      |
 | Model（模型）                 | 客户请求的模型标识，关联基准价格与模型能力声明。                                                                     |
+| Trace ID                  | 一次入口 HTTP 请求采用并回传的 `X-Request-ID`；日志字段为 `trace_id`，从认证前贯穿到响应结束，但不承担数据库或账务身份。               |
 | Request（请求）               | 生成或压缩调用进入持久生命周期后的端到端业务记录。                                                                    |
+| Request ID                | `request_records` 创建成功后使用的 `req_...` 文本业务标识；日志字段为 `request_id`，一个 Trace ID 在正常生成请求中对应一个 Request ID。 |
 | Attempt（尝试）               | Request 对一个 Candidate 发起的一次真实上游 transport。                                                   |
+| Attempt ID                | 已创建 Attempt 的数据库 bigint 主键；日志字段为 `attempt_id`，一个 Request ID 可以对应多个 Attempt ID。                            |
+| Upstream Request ID       | 上游为某次 Attempt 返回的可选请求标识；日志字段为 `upstream_request_id`，不参与 Gateway 路由、Sticky、幂等或计费。                   |
 | AttemptPermit（候选许可）       | Candidate 在 transport 前原子取得的并发、breaker、cooldown、permission 与 revision 资格；取得后才创建 Attempt。     |
 | Routing Trace（路由过程）       | 与 Request 一对一绑定的结构化决策记录，保存候选资格、五项评分、扫描、Sticky、容量等待和最终结果。                                     |
 | Sticky Binding（粘性绑定）      | 以 Protocol、Route、API Key、Model 和会话键哈希隔离的 Channel 亲和提示；通过 Channel 与 binding version 的 CAS 修改。 |
@@ -51,3 +56,5 @@ Provider 上的上游根地址字段；Endpoint 仍只指 Gateway 对外 API 操
 
 上游 TTFT 与 Gateway TTFT 的判定、字段和计费边界见
 [ADR-0017](decisions/adr-0017-authoritative-first-token.md)。
+四种请求关联 ID 的传播与一对多关系见
+[ADR-0005](decisions/adr-0005-request-identity.md)。

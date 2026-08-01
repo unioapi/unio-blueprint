@@ -3,7 +3,7 @@ title: Gateway 公开 API 契约
 description: Gateway 对外协议入口、认证、模型标识和流式交付边界。
 status: active
 owner: 网关团队
-last_updated: 2026-07-26
+last_updated: 2026-08-01
 related:
   - ../README.md
   - ../glossary.md
@@ -103,10 +103,11 @@ JSON 入口接受缺省 `Content-Type` 或媒体类型为 `application/json` 的
 其他或无法解析的类型返回 415。请求体上限由运行配置控制，正常启动的缺省值为 128 MiB，超限返回 413；
 该上限与模型上下文窗口或计费无关，详见[协议兼容性](protocol-compatibility.md)。
 
-公共 Gateway API Router 处理的每个 HTTP 请求都在响应 `X-Request-ID` 中返回 correlation ID。客户提供的值
-仅在长度不超过 128，且只含 ASCII 字母、数字、`.`、`_`、`-`、`:` 时原样保留；缺失或不安全时由网关
-生成替代值。客户可以重复使用该值，也可以提交 `req_...` 形状；它没有数据库唯一约束，不能仅凭前缀
-解释为账务和请求记录使用的服务端业务请求标识。
+公共 Gateway API Router 处理的每个 HTTP 请求都在响应 `X-Request-ID` 中返回本次日志 `trace_id`。客户
+提供的值仅在长度不超过 128，且只含 ASCII 字母、数字、`.`、`_`、`-`、`:` 时原样采用；缺失或不安全时
+由 Gateway 生成替代值。客户发送 `X-Request-ID: ABC` 时，响应头和全部请求级日志都使用 `ABC`，不会另行
+生成一个不同的返回 ID。客户可以重复使用该值，也可以提交 `req_...` 形状；它没有数据库唯一约束，不能
+仅凭前缀解释为账务和请求记录使用的服务端业务请求标识。
 
 Chat Completions、Responses 主操作、Responses compact 和 Messages 在通过认证、request admission 与协议
 前置校验并进入相应 service 的持久请求生命周期后，另行创建 `req_` 业务 ID 和持久请求记录。compact 当前仍以 `responses`
@@ -114,11 +115,11 @@ endpoint 分类。`/v1/models`、`responses/input_tokens`、501 状态操作虽�
 `request_records`；业务记录创建前的认证、admission、
 decode/validation 拒绝都不会创建 `request_records`。
 
-`X-Request-ID` 始终返回 correlation ID；持久业务 ID 不进入常规客户成功或错误响应。两类标识只有结构化
-access log 关联，没有数据库 correlation-to-request 映射。Messages handler 进入协议处理后的普通 Anthropic
+`X-Request-ID` 始终返回 `trace_id`；持久业务 ID 不进入常规客户成功或错误响应。两类标识只有结构化
+日志关联，没有数据库 trace-to-request 映射。Messages handler 进入协议处理后的普通 Anthropic
 错误使用 Anthropic 形状，但当前大多数错误调用点未写错误体 `request_id`；request-admission 错误写入的是
-correlation ID，stream writer 构造失败分支则直接读取原始请求 header。客户仍可从 HTTP 响应头取得经过
-middleware 处理的 correlation ID。
+`trace_id`，stream writer 构造失败分支则直接读取原始请求 header。客户仍可从 HTTP 响应头取得经过
+middleware 处理的 `trace_id`。
 
 公开响应按当前路径映射：Chat 非流式重建单 choice，Responses bridge 合成已支持的字段子集，原生 Responses
 普通成功 payload 除模型回显外保留上游结构，失败响应和失败事件可能被脱敏重建。内部计费、审计和恢复
