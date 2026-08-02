@@ -3,7 +3,7 @@ title: Gateway Provider 适配
 description: Provider、Origin、Channel、Adapter、协议转换和 usage 归一的当前实现边界。
 status: active
 owner: 网关团队
-last_updated: 2026-07-27
+last_updated: 2026-08-02
 related:
   - ../README.md
   - ../glossary.md
@@ -40,6 +40,10 @@ Adapter 不选择 Channel，不查询 Provider、Channel 或价格表，也不�
 Adapter 代码每次调用只执行一次 HTTP `Do`。Gateway bootstrap 禁止 HTTP redirect 跟随，避免 POST
 因 3xx 被重放；一般重试和跨 Channel fallback 由 lifecycle 创建新的 attempt。`/responses/compact`
 的原生 404/405 回落是 service 层的显式例外，仍为 Synthetic Compact 另取 permit 并创建独立 attempt。
+
+正常启动时，非流式上游响应体缺省限制为 8 MiB，超限按稳定 Adapter 错误收口。默认上游 HTTP client
+使用进程专用 Transport，允许 HTTP/2，并限制为全局最多 256 条 idle 连接、每个上游 host 最多 32 条
+idle 连接和 64 条并发连接；调用方显式注入自定义 Transport 时保留其自身策略。
 
 ## 注册与候选选择
 

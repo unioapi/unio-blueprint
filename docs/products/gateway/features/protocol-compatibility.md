@@ -3,7 +3,7 @@ title: Gateway 协议兼容性
 description: OpenAI、Anthropic 与 Responses 公开协议的 Unio 特有兼容边界。
 status: active
 owner: 网关团队
-last_updated: 2026-07-26
+last_updated: 2026-08-02
 related:
   - ../README.md
   - ../glossary.md
@@ -136,7 +136,7 @@ Chat 基线能力的 AdapterKey 当前不能服务该端点。
 
 本文于 2026-07-26 按当前 Gateway 代码、Schema 和现有测试接收为 `active`。
 
-请求体大小限制可配置，正常启动的缺省值为 128 MiB，超过限制返回 413；底层 JSON reader 只有在
+请求体大小限制可配置，正常启动的缺省值为 32 MiB，超过限制返回 413；底层 JSON reader 只有在
 未初始化或 setter 收到非正值时才回退 1 MiB。若前置代理配置了更小的限制，请求会先被代理拒绝；
 Gateway 的配置不能控制该外部边界。请求体限制与模型上下文窗口和计费无关。
 

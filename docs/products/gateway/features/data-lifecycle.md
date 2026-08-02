@@ -3,7 +3,7 @@ title: 数据生命周期
 description: Gateway 当前 Provider、Channel 与 Route 的状态、归档、恢复、硬删除和引用保护行为。
 status: active
 owner: 网关团队
-last_updated: 2026-07-31
+last_updated: 2026-08-02
 related:
   - ../glossary.md
   - routing-load-balancing.md
@@ -101,6 +101,12 @@ operation；非终态 operation、Channel、request、attempt、usage、账务�
 Channel 删除可以清理自身配置和检测日志，但不会为删除方便级联清理客户请求或账务事实。
 
 归档与硬删除不改变已有 request、attempt、response facts、usage、settlement、ledger、价格快照或成本快照。
+
+## 历史事实保留边界
+
+当前没有按时间自动删除或分区淘汰 request、attempt、usage、settlement、ledger、价格/成本快照和 routing trace
+的保留期任务。实体归档也不承担历史清理职责；历史事实会持续保留，直至另有经过账务、审计和引用完整性评审的
+数据保留契约与实现。
 
 ## 当前审计边界
 

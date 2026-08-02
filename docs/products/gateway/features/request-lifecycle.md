@@ -3,7 +3,7 @@ title: Gateway 请求生命周期
 description: 请求从身份确认到协议交付、结算与恢复的当前行为。
 status: active
 owner: 网关团队
-last_updated: 2026-08-01
+last_updated: 2026-08-02
 related:
   - ../README.md
   - ../glossary.md
@@ -118,6 +118,10 @@ Gateway TTFT（`gateway_first_token_at - started_at`）与上游 TTFT
 非流式成功结果绑定 first-terminal-wins 的 delivery finalizer：响应写入成功记 `completed`，写入错误或 panic
 记 `interrupted`。流式路径按上表推进 delivery。delivery 更新使用脱离客户取消的短超时上下文，写入错误被
 忽略；该字段记录 Gateway 写入路径的结果，不确认客户程序已经收到数据。
+
+Gateway HTTP server 不使用从请求头读取完成开始计算的绝对写超时，以免合法长流被固定总时长截断。普通 JSON
+响应在真正写出前设置一次下游写窗口；SSE 在每个 event 写出前刷新滑动窗口，正常启动时窗口为 30 秒。
+因此活跃长流可以持续，而停止读取的慢客户端不能无限占用一次写操作。
 
 公开成功只表示当前协议交付路径已满足返回条件，不等于后台 settlement 已最终成功。pending recovery
 最终耗尽时，客户可能已经完整收到成功响应且 delivery 保持 `completed`，但 request 后来被标记为 `failed`。

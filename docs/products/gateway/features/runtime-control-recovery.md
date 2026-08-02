@@ -3,7 +3,7 @@ title: 运行控制与恢复
 description: Gateway 的 Provider 双 revision、Channel 控制、运行态代际围栏和故障恢复当前行为。
 status: active
 owner: 网关团队
-last_updated: 2026-07-31
+last_updated: 2026-08-02
 related:
   - ../glossary.md
   - admission-control.md
@@ -128,6 +128,9 @@ Reconciler 完整核对 PostgreSQL 与 Redis 后才能清锁。
 
 连续 401 key 包含 Channel ID、Channel config revision 与 Provider 的 origin/status revision。相同 revision 的
 成功清零；达到阈值后异步 PostgreSQL CAS，仅在三条 revision 匹配且 credential 当前 valid 时置 invalid。
+进程内每个 Channel 只保留最新 revision 的连续计数，迟到的旧 revision 不参与新计数；状态按最近使用顺序最多
+保留 4096 个 Channel。PostgreSQL CAS 对同一 Channel 的在途任务去重，单进程最多同时执行 32 个，容量已满时
+本轮 best-effort 触发被丢弃，之后的新 401 仍可再次达到阈值并触发。
 
 凭据更新遵循：
 

@@ -3,7 +3,7 @@ title: Gateway 公开 API 契约
 description: Gateway 对外协议入口、认证、模型标识和流式交付边界。
 status: active
 owner: 网关团队
-last_updated: 2026-08-01
+last_updated: 2026-08-02
 related:
   - ../README.md
   - ../glossary.md
@@ -100,7 +100,7 @@ Gateway 校验协议结构、类型、必填字段和联合类型合法性。合
 持久审计或公开响应。
 
 JSON 入口接受缺省 `Content-Type` 或媒体类型为 `application/json` 的值（允许参数且不区分大小写）；
-其他或无法解析的类型返回 415。请求体上限由运行配置控制，正常启动的缺省值为 128 MiB，超限返回 413；
+其他或无法解析的类型返回 415。请求体上限由运行配置控制，正常启动的缺省值为 32 MiB，超限返回 413；
 该上限与模型上下文窗口或计费无关，详见[协议兼容性](protocol-compatibility.md)。
 
 公共 Gateway API Router 处理的每个 HTTP 请求都在响应 `X-Request-ID` 中返回本次日志 `trace_id`。客户

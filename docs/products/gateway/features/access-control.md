@@ -26,8 +26,7 @@ Gateway 以 API Key 鉴别调用方。有效 API Key 直接解析到 User Accoun
 - SHA-256 hash；
 - 完整明文 `key_plaintext`。
 
-新建 Key 的明文格式为 `sk-ant-api03-unio_<random>`，展示前缀保留同一固定前缀和随机部分前 8 位。该形状
-满足 Claude Code 对 `ANTHROPIC_API_KEY` 的本地前缀校验，也可作为 OpenAI-compatible Bearer Key 使用。
+新建 Key 的明文格式为 `unio_sk_<random>`，展示前缀保留同一固定前缀和随机部分前 8 位。
 认证只比较完整明文的 SHA-256 hash，因此此前生成的其他前缀 Key 不因生成格式变化而失效。
 
 认证只按 hash 查询。创建响应、API Key 运维列表、请求列表、更新响应和吊销响应当前可以返回完整明文；
