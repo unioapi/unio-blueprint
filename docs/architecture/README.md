@@ -3,7 +3,7 @@ title: Architecture（平台架构）
 description: 平台级设计目标、约束与依据的统一入口。
 status: active
 owner: 架构团队
-last_updated: 2026-07-21
+last_updated: 2026-08-03
 related:
   - ../README.md
   - ../decisions/README.md
@@ -49,6 +49,7 @@ related:
 | [平台上下文](context.md) | 哪些人和系统会与平台交互？ |
 | [架构策略](strategy.md) | 平台架构应如何演进？ |
 | [概念部署](deployment.md) | 平台需要什么概念运行结构？ |
+| [邮件投递中心](email-delivery-center.md) | 平台如何以通用 SMTP 可靠发送事务与运营邮件？ |
 | [平台词汇表](glossary.md) | 共享术语分别代表什么？ |
 | [质量属性](quality.md) | 哪些质量要求约束整个平台？ |
 | [架构风险](risks.md) | 哪些风险需要持续管理？ |
