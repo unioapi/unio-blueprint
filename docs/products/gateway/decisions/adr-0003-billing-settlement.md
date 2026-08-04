@@ -3,7 +3,7 @@ title: "ADR-0003：预付授权、结算与恢复的账务边界"
 description: "Gateway 在上游调用前冻结可用余额，按 token_v1 结算，并以补扣、核销、快照和恢复记录账务事实。"
 status: active
 owner: 网关团队
-last_updated: 2026-07-31
+last_updated: 2026-08-04
 related:
   - ../overview.md
   - ../features/access-control.md
@@ -87,8 +87,9 @@ debit 和可选的一条 overage debit 表达，不保存在价格快照中。
 - job 已创建而内联 settlement 失败时，worker 按 job 事实幂等重放。重试耗尽后 job 进入 `dead`；worker
   仅对仍为 `running` 的请求释放授权、按授权额记录 `risk_exposure` 并标记 `failed`。已经交付的 delivery
   状态不会回滚。
-- orphan reservation sweeper 选择 `authorized`、超过年龄阈值、请求仍为 `running` 且查询时没有 recovery
-  job 的记录；收口时释放授权、按授权额记录 `risk_exposure` 并把仍为 `running` 的请求标记为 `failed`。
+- 授权清扫与 settlement recovery 按请求状态互斥：孤儿路径处理仍为 `running` 的 `authorized` 冻结（释放并记
+  `risk_exposure`、请求标 `failed`）；搁浅路径处理已为 `failed`/`canceled` 的 `authorized` 冻结（只释放，
+  不写敞口、不改终态）。参数、稳定码与巡检以 [账务与结算](../features/billing-settlement.md) 为准。
 - 对 bill-on-disconnect Channel，客户取消、timeout、传输失败或部分 5xx 路径可以另记估算 Provider 成本
   敞口。该事实与客户 usage、余额和 ledger 分离，已形成完整或 partial settlement 成本时不重复记录。
 
@@ -100,8 +101,8 @@ debit 和可选的一条 overage debit 表达，不保存在价格快照中。
   `channel_prices` 覆盖路径该 ID 为零，重放会使用空策略，可能漏算长上下文售价和成本倍率。
 - token `unknown` 可以进入 recovery job，但 `token_v1` 每次重放仍会拒绝 settlement；事实不变时最终进入
   `dead`，没有可结算降级口径。
-- orphan sweeper 的列表与单条收口不在同一事务，收口时只重查 request 是否仍为 `running`，不重查是否已
-  并发创建 recovery job。流只有 idle timeout、没有总时限，正常活跃长流也可能超过年龄阈值并被误收口。
+- orphan / stranded 清扫的列表与单条收口不在同一事务；orphan 收口不重查 recovery job，活跃长流也可能超过
+  年龄阈值。`authorized` 配 `succeeded` 不自动回收。细节见功能文档。
 - `web_search_requests` / `web_fetch_requests` 的 line item 只接受正数；显式零会使 settlement facts 校验失败。
   recovery 又把零与缺失折叠，当前不能表达完整三态，也没有独立按次收费。
 - `price_snapshots.price_id` 当前是可选的 `channel_prices` 成本覆盖行 ID，不是客户售价使用的

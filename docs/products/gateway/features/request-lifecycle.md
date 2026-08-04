@@ -3,7 +3,7 @@ title: Gateway 请求生命周期
 description: 请求从身份确认到协议交付、结算与恢复的当前行为。
 status: active
 owner: 网关团队
-last_updated: 2026-08-02
+last_updated: 2026-08-04
 related:
   - ../README.md
   - ../glossary.md
@@ -85,7 +85,8 @@ Redis TPM 的 `actual_total` 包含互斥的 uncached input、cache read、各�
 | pending recovery | job 保存 usage、客户短上下文售价向量和成本来源 pin；worker 不重调上游，也不重新解析公开响应。 |
 | token 用量为 `unknown` | 账务仍按既有规则拒绝不可靠 usage；准入 TPM 不按零或本地输出猜测 actual：已有上游交互时保留输入估算，明确未写出才释放输入占用。 |
 | recovery 耗尽 | job 进入 `dead` 后，worker 仅在请求仍为 `running` 时释放授权、按授权额记录 `risk_exposure`，并把请求标记为 `failed`。 |
-| 超时授权清扫 | sweeper 选择 `authorized`、超过配置年龄阈值、请求为 `running` 且查询时不存在 recovery job 的记录；收口时释放授权、按授权额记录 `risk_exposure` 并把仍为 `running` 的请求标记为 `failed`。 |
+| 孤儿授权清扫 | `authorized` + 请求仍 `running` + 超年龄阈值 + 无 recovery job；释放冻结、记 `risk_exposure`、请求标 `failed`（`gateway_request_orphan_reclaimed`）。 |
+| 搁浅授权清扫 | `authorized` + 请求已 `failed`/`canceled` + 超年龄阈值 + 无 recovery job；只释放冻结，不改请求终态（`gateway_request_stranded_reclaimed`）。三方边界见 [账务与结算](billing-settlement.md)。 |
 
 输出总量是权威输出计量；reasoning 是其可能的分解。token 维度区分 `known`、`not_applicable` 和
 `unknown`，`unknown` 不会按零结算。只有满足完整性约束的可靠 usage 会结算 Redis TPM；账务的本地或 partial
@@ -147,8 +148,8 @@ attempt 时序、首字、交付和结算过程。四种 ID 的边界见
   request 终态不被幂等入口接受而持续失败。
 - recovery job 没有直接保存长上下文策略。倍率成本路径可通过 `CostBaseModelPriceID` 重建策略；绝对
   `channel_prices` 成本覆盖路径该 pin 为零，worker 使用空策略，可能漏算客户售价和 Provider 成本的长上下文倍率。
-- orphan sweeper 的列表查询与单条收口不在同一事务；收口只重查 request 是否仍为 `running`，不重查是否已
-  并发创建 recovery job。流本体只有 idle timeout、没有总时限，正常活跃长流也可能超过年龄阈值并被误收口。
+- orphan / stranded 清扫与 settlement recovery 的互斥条件、默认参数与巡检脚本见
+  [账务与结算](billing-settlement.md)；orphan 收口时不重查 recovery job，活跃长流也可能超过年龄阈值。
 - delivery 状态写入是 best effort；部分流式 settlement 或 recovery job 创建失败分支会在标记 interrupted 前
   返回，记录可能停留在 `in_progress`。
 - token partial settlement 没有权威 usage 后到修正路径；当前幂等校验会拒绝不同 usage 的再次 settlement。

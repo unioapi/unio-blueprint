@@ -3,7 +3,7 @@ title: "功能设计：账务与结算"
 description: "记录预付余额、授权、结算、核销、价格与成本快照的当前行为。"
 status: active
 owner: 网关团队
-last_updated: 2026-07-31
+last_updated: 2026-08-04
 related:
   - ../overview.md
   - ../glossary.md
@@ -91,6 +91,9 @@ recoverable settlement 在内联结算前先校验事实并创建 pending job。
 token 事实中的 `unknown` 能进入 recovery job，但 `token_v1` 每次重放都会拒绝结算；若事实不变，job
 会持续失败直至 `dead`，再按上述路径释放授权和记录 `risk_exposure`。
 
+进程默认（均可由环境变量覆盖）：`max_attempts=20`、claim 锁 TTL `30s`、首次可领延迟 `30s`、单次结算超时
+`10s`、指数退避上限 `5m`、单轮批量 `16`。
+
 ## 附加计量项现状
 
 - Anthropic parser 对存在的 `web_search_requests` / `web_fetch_requests` 字段创建 metered item，包括显式零。
@@ -102,16 +105,32 @@ token 事实中的 `unknown` 能进入 recovery job，但 `token_v1` 每次重�
   不能在 recovery 路径中区分。
 - partial stream 只保存 token 估算，不携带 server-tool 次数；当前也没有权威 usage 后到收口机制。
 
-## 超时授权清扫
+## 授权清扫：三方边界
 
-orphan reservation sweeper 查询以下记录：reservation 为 `authorized`、创建时间早于配置阈值、关联 request
-仍为 `running`，并且查询当时不存在 settlement recovery job。当前默认年龄阈值为 15 分钟。收口事务只
-重新锁定并检查 request 是否仍为 `running`，随后释放 reservation、按授权额记录 `risk_exposure` 并把
-request 标记为 `failed`。
+网关失败路径普遍是「先 `ReleaseAuthorization`、再写请求终态」两步，与 settlement recovery / 进程崩溃
+遗留组合后，会出现三类需要 worker 兜底的 `authorized` 冻结。三条路径按请求状态与是否存在 recovery job
+互斥，共用年龄阈值与批量配置（默认年龄 `15m`、单轮批量 `100`，环境变量
+`WORKER_ORPHAN_RESERVATION_SWEEP_AGE_THRESHOLD` / `_BATCH_SIZE`）。
 
-列表查询和单条收口分属不同事务。收口事务只重查 request 是否仍为 `running`，不重查 recovery job；流本体
-没有总时限，只有 idle timeout。因此查询后并发创建的 recovery job 和超过年龄阈值的活跃长流仍可能被该
-收口事务处理。
+| 路径 | 命中条件 | 收口动作 | 稳定码 / 告警 |
+| --- | --- | --- | --- |
+| settlement recovery（dead job） | job 重试耗尽为 `dead`，请求仍为 `running` | 释放冻结、按授权额记 `risk_exposure`、请求标 `failed` | 既有 recovery 路径 |
+| orphan reservation sweeper | `authorized` + 请求仍 `running` + 超年龄阈值 + 无 recovery job | 释放冻结、按授权额记 `risk_exposure`（reason `orphan_reservation_swept`）、请求标 `failed` | `gateway_request_orphan_reclaimed` |
+| stranded reservation sweeper | `authorized` + 请求已为 `failed`/`canceled` + 超年龄阈值 + 无 recovery job | 仅释放冻结；**不**写 `risk_exposure`，**不**改请求终态 | `gateway_request_stranded_reclaimed`；成功回收日志带 `alert=stranded_reservation_reclaimed` |
+
+搁浅路径的成因是：release 自身失败（如 5s 超时、行锁竞争）而随后的终态审计写入成功，于是冻结留在
+`authorized`、请求已是终态——既不进孤儿清扫，也不被 settlement recovery 接管。自动释放的安全性依据是：
+网关与两个 finalizer 的释放路径均「release 在前、终态在后」或与终态同事务，因此 `authorized` 配
+`failed`/`canceled` 不存在合法瞬时态。`authorized` 配 `succeeded` **不**自动回收（capture 未发生却已
+告知客户成功属更严重异常），留给运维巡检暴露。
+
+orphan / stranded 的列表查询与单条收口分属不同事务。orphan 收口只重查 request 是否仍为 `running`，不重查
+recovery job；流本体没有总时限、只有 idle timeout，因此查询后并发创建的 recovery job 和超过年龄阈值的
+活跃长流仍可能被 orphan 收口事务处理。stranded 收口以「请求仍为 `failed`/`canceled`」为幂等闸门，已释放
+或不存在的 reservation 按幂等成功返回。
+
+运维残余检查见 Gateway 仓库 `scripts/ledger_reservation_audit.sql`：终态请求配 `authorized` 冻结、以及
+`user_balances.reserved_balance` 与 authorized 之和不等，两条均应恒为 0 行（worker 未跑或出现新泄漏形态时除外）。
 
 ## 断开仍计费渠道
 
@@ -135,6 +154,7 @@ request 标记为 `failed`。
 - partial token usage 结算后不能被后到权威 usage 修正。
 - token `unknown` 只有重试直至 `dead` 的现有结果，没有可结算降级口径。
 - orphan sweeper 的列表查询与收口事务分离，收口时不重查 recovery job，也不判断 transport 是否仍在执行。
+- stranded sweeper 不自动处理 `authorized` 配 `succeeded`；该类行只能靠巡检发现。
 - bill-on-disconnect 成本计算失败当前静默丢失；数据库写入失败由 recorder 记录 `WARN`，caller 忽略错误。
 - 服务端工具次数只支持正数事实；显式零会使整组 settlement facts 失败，三态和独立按次收费均未实现。
 
@@ -143,9 +163,10 @@ request 标记为 `failed`。
 余额、reservation、ledger、usage、价格快照和成本快照属于敏感业务事实。公开 API 不暴露内部 Channel、
 Provider 成本、倍率或凭据；只有被授权的客户或运营角色可查看与职责相符的记录。
 
-当前可关联授权、capture、overage debit、write-off、release、recovery job 和 `risk_exposure`。已结算实际
-Provider 成本、平台核销和 bill-on-disconnect 估算敞口保存在不同事实中。成本计算失败不写记录，数据库
-写入失败只写 `WARN`；partial settlement 没有后到权威 usage 替换记录。
+当前可关联授权、capture、overage debit、write-off、release、recovery job、`risk_exposure`，以及 orphan /
+stranded 清扫的稳定错误码与 `alert=` 日志键。已结算实际 Provider 成本、平台核销和 bill-on-disconnect
+估算敞口保存在不同事实中。成本计算失败不写记录，数据库写入失败只写 `WARN`；partial settlement 没有后到
+权威 usage 替换记录。
 
 ## 关联决策
 
