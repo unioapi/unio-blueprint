@@ -3,7 +3,7 @@ title: "ADR-0012：Provider、Channel 与 Route 供给生命周期"
 description: "定义 Origin 并入 Provider 后的供给关系、状态不变量以及编辑、启停、归档与恢复规则。"
 status: active
 owner: 网关团队
-last_updated: 2026-07-31
+last_updated: 2026-08-04
 related:
   - ../features/data-lifecycle.md
   - ../features/admission-control.md
@@ -144,14 +144,13 @@ Provider 是上游总闸，Channel 是具体供给单元，Route 是面向客户
 | 部分入口绕过状态不变量 | 在 service 与数据库可表达的约束中共同校验，并覆盖创建、编辑、启停、归档和恢复测试 | 网关团队 |
 | 多步操作中途停止 | 每一步保持合法终态，Admin 展示剩余前置条件并允许安全重试 | 网关团队、管理后台团队 |
 | Route 池保留 disabled Channel 被误认为可用 | 路由继续按三层 `enabled` 条件过滤，Admin 分开展示池成员与当前候选资格 | 网关团队、管理后台团队 |
-| 归档清理破坏在途请求收口 | 区分立即清理状态与 permit 绑定资源，并用长流和异常 TTL 场景验证 | 网关团队 |
+| 归档清理破坏在途请求收口 | 区分立即清理状态与 permit 绑定资源；异常残留由租约和 TTL 回收 | 网关团队 |
 
 ## 落地与验证
 
 - Gateway 与 Admin Schema、API、运行态和页面已经按本 ADR 完成一次切换。
 - 合同测试覆盖非法状态转换的 conflict，以及所有操作均不发生静默级联。
 - 集成测试证明 Channel 停用保留 Route 池、恢复落入 `disabled`、归档引用必须显式解除。
-- 长流与异常测试证明归档后不再接收新请求，同时已开始请求仍能完成资源、usage 和结算收口。
 
 ## 取代关系
 

@@ -81,28 +81,29 @@ debit 和可选的一条 overage debit 表达，不保存在价格快照中。
 ## Settlement Recovery
 
 - recoverable settlement 先验证事实并创建 pending recovery job，再尝试内联 settlement。job 保存 usage、
-  响应标识、授权金额、客户短上下文售价向量、公式版本和成本来源 ID，不重新调用上游。
+  响应标识、授权金额、客户短上下文售价向量、公式版本、成本来源 ID、request/attempt 目标终态、错误事实和
+  独立长上下文策略，不重新调用上游，也不通过成本来源 ID 推断长上下文策略。
 - job 创建失败时不会执行内联 settlement；调用路径会释放 reservation、记录账务异常 `risk_exposure` 并把
   请求收口为失败。该 `risk_exposure` 使用授权金额作为风险上界，不是已确认的 Provider 实际成本。
 - job 已创建而内联 settlement 失败时，worker 按 job 事实幂等重放。重试耗尽后 job 进入 `dead`；worker
   仅对仍为 `running` 的请求释放授权、按授权额记录 `risk_exposure` 并标记 `failed`。已经交付的 delivery
   状态不会回滚。
+- partial recovery 按 job 保存的 canceled、failed 或 succeeded 目标收口；已提交终态的再次重放只有在状态、
+  错误、usage、`final_usage_received` 和账务事实一致时才按幂等成功返回。
 - 授权清扫与 settlement recovery 按请求状态互斥：孤儿路径处理仍为 `running` 的 `authorized` 冻结（释放并记
-  `risk_exposure`、请求标 `failed`）；搁浅路径处理已为 `failed`/`canceled` 的 `authorized` 冻结（只释放，
-  不写敞口、不改终态）。参数、稳定码与巡检以 [账务与结算](../features/billing-settlement.md) 为准。
+  `risk_exposure`、请求标 `failed`），但必须同时没有 running attempt 和 recovery job；搁浅路径处理已为
+  `failed`/`canceled` 的 `authorized` 冻结（只释放，不写敞口、不改终态）。orphan finalizer 与 recovery job
+  创建通过同一 request 行锁串行化。参数、稳定码与巡检以 [账务与结算](../features/billing-settlement.md) 为准。
 - 对 bill-on-disconnect Channel，客户取消、timeout、传输失败或部分 5xx 路径可以另记估算 Provider 成本
   敞口。该事实与客户 usage、余额和 ledger 分离，已形成完整或 partial settlement 成本时不重复记录。
 
 ## 当前边界
 
-- recovery job 不保存 partial settlement 的 request/attempt 目标终态和错误事实。worker 首次重放会使用
-  默认 `succeeded`；已经提交为 `canceled`/`failed` 的 partial 也不满足当前成功幂等入口。
-- recovery job 不直接保存长上下文策略。倍率成本路径依赖 `CostBaseModelPriceID` 对应行仍可读取；绝对
-  `channel_prices` 覆盖路径该 ID 为零，重放会使用空策略，可能漏算长上下文售价和成本倍率。
 - token `unknown` 可以进入 recovery job，但 `token_v1` 每次重放仍会拒绝 settlement；事实不变时最终进入
   `dead`，没有可结算降级口径。
-- orphan / stranded 清扫的列表与单条收口不在同一事务；orphan 收口不重查 recovery job，活跃长流也可能超过
-  年龄阈值。`authorized` 配 `succeeded` 不自动回收。细节见功能文档。
+- orphan / stranded 清扫的列表与单条收口不在同一事务；orphan 收口在 request 行锁内重查 recovery job 和
+  running attempt，recovery 创建使用同一行锁。崩溃后永久残留的 running attempt 不自动回收；
+  `authorized` 配 `succeeded` 也不自动回收。细节见功能文档。
 - `web_search_requests` / `web_fetch_requests` 的 line item 只接受正数；显式零会使 settlement facts 校验失败。
   recovery 又把零与缺失折叠，当前不能表达完整三态，也没有独立按次收费。
 - `price_snapshots.price_id` 当前是可选的 `channel_prices` 成本覆盖行 ID，不是客户售价使用的

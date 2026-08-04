@@ -82,10 +82,10 @@ Redis TPM 的 `actual_total` 包含互斥的 uncached input、cache read、各�
 | 授权先于上游调用 | 授权发生在逐候选 permit 和 transport 之前；余额不大于零时不调用上游。 |
 | 超额结算 | `capture = min(actual, authorized)`；随后从结算时未冻结可用余额独立补扣，剩余差额才形成 `write_off`，客户余额不为负。 |
 | 历史结算 | 已完成 settlement 会写 usage、售价和 Provider 成本快照，后续配置变化不重算已完成账单。 |
-| pending recovery | job 保存 usage、客户短上下文售价向量和成本来源 pin；worker 不重调上游，也不重新解析公开响应。 |
+| pending recovery | job 保存 usage、客户短上下文售价向量、成本来源 pin、目标终态、错误事实和长上下文策略；worker 不重调上游、不重新解析公开响应，也不回查价格表推断策略。 |
 | token 用量为 `unknown` | 账务仍按既有规则拒绝不可靠 usage；准入 TPM 不按零或本地输出猜测 actual：已有上游交互时保留输入估算，明确未写出才释放输入占用。 |
 | recovery 耗尽 | job 进入 `dead` 后，worker 仅在请求仍为 `running` 时释放授权、按授权额记录 `risk_exposure`，并把请求标记为 `failed`。 |
-| 孤儿授权清扫 | `authorized` + 请求仍 `running` + 超年龄阈值 + 无 recovery job；释放冻结、记 `risk_exposure`、请求标 `failed`（`gateway_request_orphan_reclaimed`）。 |
+| 孤儿授权清扫 | `authorized` + 请求仍 `running` + 超年龄阈值 + 无 running attempt + 无 recovery job；释放冻结、记 `risk_exposure`、请求标 `failed`（`gateway_request_orphan_reclaimed`）。 |
 | 搁浅授权清扫 | `authorized` + 请求已 `failed`/`canceled` + 超年龄阈值 + 无 recovery job；只释放冻结，不改请求终态（`gateway_request_stranded_reclaimed`）。三方边界见 [账务与结算](billing-settlement.md)。 |
 
 输出总量是权威输出计量；reasoning 是其可能的分解。token 维度区分 `known`、`not_applicable` 和
@@ -143,13 +143,8 @@ attempt 时序、首字、交付和结算过程。四种 ID 的边界见
 
 ## 当前边界事实
 
-- recovery job 不保存 partial settlement 的 request/attempt 目标终态和错误事实。初次结算未提交时，worker
-  重放会默认按 succeeded 收口；若 canceled/failed settlement 已提交但 job 完成标记丢失，后续重放又会因
-  request 终态不被幂等入口接受而持续失败。
-- recovery job 没有直接保存长上下文策略。倍率成本路径可通过 `CostBaseModelPriceID` 重建策略；绝对
-  `channel_prices` 成本覆盖路径该 pin 为零，worker 使用空策略，可能漏算客户售价和 Provider 成本的长上下文倍率。
-- orphan / stranded 清扫与 settlement recovery 的互斥条件、默认参数与巡检脚本见
-  [账务与结算](billing-settlement.md)；orphan 收口时不重查 recovery job，活跃长流也可能超过年龄阈值。
+- orphan / stranded 清扫与 settlement recovery 的互斥条件、request 行锁、默认参数与巡检脚本见
+  [账务与结算](billing-settlement.md)；orphan 扫描和收口都排除 running attempt，收口事务重查 recovery job。
 - delivery 状态写入是 best effort；部分流式 settlement 或 recovery job 创建失败分支会在标记 interrupted 前
   返回，记录可能停留在 `in_progress`。
 - token partial settlement 没有权威 usage 后到修正路径；当前幂等校验会拒绝不同 usage 的再次 settlement。

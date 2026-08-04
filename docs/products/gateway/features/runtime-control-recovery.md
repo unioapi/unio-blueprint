@@ -3,7 +3,7 @@ title: 运行控制与恢复
 description: Gateway 的 Provider 双 revision、Channel 控制、运行态代际围栏和故障恢复当前行为。
 status: active
 owner: 网关团队
-last_updated: 2026-08-02
+last_updated: 2026-08-04
 related:
   - ../glossary.md
   - admission-control.md
@@ -157,8 +157,7 @@ mismatch、Finish disposition 和凭据检测摘要。
 
 当前测试覆盖普通 control、Provider origin/status publisher/reconciler、启动时 DB 权威修复高低 revision、payload
 漂移、pending、错误 key 类型和 ready marker 丢失，周期严格协调不覆盖冲突，以及 state epoch bootstrap、响应
-丢失、maintenance evidence、awaiting release、readiness、401、凭据 CAS、permission recheck、归档分层 purge、
-完整状态丢失和长流 revision fence。
+丢失、maintenance evidence、awaiting release、readiness、401、凭据 CAS、permission recheck 和归档分层 purge。
 
 ## 相关决策
 

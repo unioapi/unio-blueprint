@@ -3,7 +3,7 @@ title: "ADR-0014：Provider 与 Channel 熔断归因"
 description: "定义真实上游结果进入 Provider 与 Channel breaker、证据、冷却和权限闸门的当前规则。"
 status: active
 owner: 网关团队
-last_updated: 2026-07-31
+last_updated: 2026-08-04
 related:
   - ../features/resilience-circuit-breakers.md
   - ../features/routing-load-balancing.md
@@ -105,8 +105,8 @@ Provider breaker 承担公共连接、地址和服务故障；Channel breaker �
 
 ## 落地与验证
 
-- breaker、evidence、permission、credential gate、proof、metrics 和 p4fault 已全部切换到 Provider 作用域。
-- 单元与故障测试覆盖归因矩阵、隔离 evidence、half-open、reset 404、stale revision、Store 故障和多进程共享。
+- breaker、evidence、permission、credential gate、proof 和 metrics 已全部切换到 Provider 作用域。
+- 当前单元测试覆盖归因矩阵、隔离 evidence、half-open、reset、stale revision 和 Store 故障。
 - 旧 Origin Redis key、combined routing Lua 和 Origin DTO 已从当前实现删除。
 
 ## 取代关系

@@ -3,7 +3,7 @@ title: "ADR-0013：Provider 运行态代际围栏"
 description: "以 Provider 的独立 origin/status revision、Channel revision 与整体运行态代际隔离迟到结果。"
 status: active
 owner: 网关团队
-last_updated: 2026-07-31
+last_updated: 2026-08-04
 related:
   - ../features/runtime-control-recovery.md
   - ../features/data-lifecycle.md
@@ -107,14 +107,14 @@ control 继续维护各自 revision，permit 固化本次调用需要的全部�
 | 风险 | 缓解措施 | 负责人 |
 | --- | --- | --- |
 | 地址和状态 pending 被错误合并 | operation kind、revision 和 Redis pending 分开建模并覆盖交错操作测试 | 网关团队 |
-| 归档误删在途资源 | purge 按立即阻断事实与 permit 绑定资源分层，覆盖长流和异常 TTL 测试 | 网关团队 |
+| 归档误删在途资源 | purge 按立即阻断事实与 permit 绑定资源分层；异常残留由租约和 TTL 回收 | 网关团队 |
 | 启动修复误清业务运行态 | 只重建目标 control/marker；Provider 正常 Hash 保留 breaker，其他资源使用独立 key | 网关团队 |
 
 ## 落地与验证
 
 - Gateway Schema、publisher、reconciler、readiness、permit、凭据检测和运行诊断已经切换为 Provider 双 revision。
-- 隔离 PostgreSQL 已重放全部迁移、seed、down/up；隔离 Redis 已验证全新初始化和完整状态丢失恢复。
-- breakerstore、runtimecontrol、Admin 合同、全量 Go 测试、构建、长流与完整状态丢失 E2E 均已通过。
+- 隔离 PostgreSQL 已重放全部迁移、seed、down/up；Redis 测试覆盖运行态初始化、control 生命周期与完整性围栏。
+- breakerstore、runtimecontrol、Admin 合同、全量 Go 测试和构建均已通过。
 
 ## 取代关系
 

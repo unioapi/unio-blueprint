@@ -3,7 +3,7 @@ title: "ADR-0011：运行时部署边界"
 description: "记录 Gateway 当前进程、PostgreSQL、Redis、健康探针与运行控制边界。"
 status: active
 owner: 网关团队
-last_updated: 2026-07-31
+last_updated: 2026-08-04
 related:
   - ../features/admission-control.md
   - ../features/runtime-control-recovery.md
@@ -65,9 +65,8 @@ related:
 ## 代码与测试证据
 
 当前代码和测试覆盖各 `cmd` 入口、PostgreSQL/Redis client、单节点 verifier、Gateway/Admin/Worker 的不同装配
-路径、state epoch 与全量 reconciliation、readiness 原子核验、control commit 响应丢失恢复、两个 Gateway 共享
-运行态、Redis stop/restart、完整 state-loss maintenance 生命周期、AOF/RDB restore、长流 revision fence、
-half-open lease 接管，以及 Cluster verifier 拒绝与跨 slot 多键 Lua 返回 `CROSSSLOT`。
+路径、state epoch 与全量 reconciliation、readiness 原子核验、control commit 响应丢失恢复、运行态故障闩锁、
+revision fence、half-open 状态机和 Cluster 拒绝。
 
 ## 来源谱系
 

@@ -19,7 +19,7 @@ related:
 
 Gateway 当前采用预付余额模型：调用前冻结可用余额，调用后按本次 usage 和锁定售价结算，同时记录
 Provider 成本、客户实扣与平台核销。已完成 settlement 的历史事实不随配置变化重算；pending recovery
-保存 usage、客户短上下文售价向量、公式版本和成本来源 ID。
+保存 usage、客户短上下文售价向量、公式版本、成本来源 ID、目标终态、错误事实和长上下文策略。
 
 ## 当前计费范围
 
@@ -82,7 +82,12 @@ bill-on-disconnect 渠道可另记平台成本敞口。客户取消与上游中�
 ## Settlement Recovery
 
 recoverable settlement 在内联结算前先校验事实并创建 pending job。job 保存 usage、响应标识、授权金额、
-客户短上下文售价向量、公式版本以及成本来源 ID；worker 据此重放，不重调上游、不重新解析公开响应。
+客户短上下文售价向量、公式版本、成本来源 ID、request/attempt 目标终态、错误事实，以及长上下文开关、
+门槛和输入/输出倍率；worker 据此重放，不重调上游、不重新解析公开响应，也不回查价格表推断策略。
+
+worker 重放使用 job 中的目标终态和错误事实。若首次 settlement 已提交、但 job 完成标记失败，重复重放只在
+request、attempt、usage、错误和账务事实与 job 一致时按幂等成功返回。partial estimate 对应的 attempt 保持
+`final_usage_received=false`；客户取消、上游中断和正常缺 final usage 分别保持 canceled、failed、succeeded。
 
 内联 settlement 失败但 job 已建立时，当前请求可以按 pending recovery 结束协议交付。worker 重试耗尽后
 将 job 标为 `dead`；随后只对仍为 `running` 的请求释放冻结、按授权额记录 `risk_exposure` 并标记
@@ -115,7 +120,7 @@ token 事实中的 `unknown` 能进入 recovery job，但 `token_v1` 每次重�
 | 路径 | 命中条件 | 收口动作 | 稳定码 / 告警 |
 | --- | --- | --- | --- |
 | settlement recovery（dead job） | job 重试耗尽为 `dead`，请求仍为 `running` | 释放冻结、按授权额记 `risk_exposure`、请求标 `failed` | 既有 recovery 路径 |
-| orphan reservation sweeper | `authorized` + 请求仍 `running` + 超年龄阈值 + 无 recovery job | 释放冻结、按授权额记 `risk_exposure`（reason `orphan_reservation_swept`）、请求标 `failed` | `gateway_request_orphan_reclaimed` |
+| orphan reservation sweeper | `authorized` + 请求仍 `running` + 超年龄阈值 + 无 running attempt + 无 recovery job | 释放冻结、按授权额记 `risk_exposure`（reason `orphan_reservation_swept`）、请求标 `failed` | `gateway_request_orphan_reclaimed` |
 | stranded reservation sweeper | `authorized` + 请求已为 `failed`/`canceled` + 超年龄阈值 + 无 recovery job | 仅释放冻结；**不**写 `risk_exposure`，**不**改请求终态 | `gateway_request_stranded_reclaimed`；成功回收日志带 `alert=stranded_reservation_reclaimed` |
 
 搁浅路径的成因是：release 自身失败（如 5s 超时、行锁竞争）而随后的终态审计写入成功，于是冻结留在
@@ -124,10 +129,10 @@ token 事实中的 `unknown` 能进入 recovery job，但 `token_v1` 每次重�
 `failed`/`canceled` 不存在合法瞬时态。`authorized` 配 `succeeded` **不**自动回收（capture 未发生却已
 告知客户成功属更严重异常），留给运维巡检暴露。
 
-orphan / stranded 的列表查询与单条收口分属不同事务。orphan 收口只重查 request 是否仍为 `running`，不重查
-recovery job；流本体没有总时限、只有 idle timeout，因此查询后并发创建的 recovery job 和超过年龄阈值的
-活跃长流仍可能被 orphan 收口事务处理。stranded 收口以「请求仍为 `failed`/`canceled`」为幂等闸门，已释放
-或不存在的 reservation 按幂等成功返回。
+orphan / stranded 的列表查询与单条收口分属不同事务。orphan 列表排除 running attempt；单条收口先锁 request，
+再重查 request 仍为 `running`、不存在 recovery job 且不存在 running attempt。recovery job 创建也先锁同一条
+仍为 `running` 的 request，因此不能在清扫释放余额后迟到插入。stranded 收口以「请求仍为
+`failed`/`canceled`」为幂等闸门，已释放或不存在的 reservation 按幂等成功返回。
 
 运维残余检查见 Gateway 仓库 `scripts/ledger_reservation_audit.sql`：终态请求配 `authorized` 冻结、以及
 `user_balances.reserved_balance` 与 authorized 之和不等，两条均应恒为 0 行（worker 未跑或出现新泄漏形态时除外）。
@@ -147,13 +152,10 @@ recovery job；流本体没有总时限、只有 idle timeout，因此查询后�
 
 ## 当前边界
 
-- recovery job 不保存 partial settlement 的 request/attempt 目标终态和错误事实。初次事务未提交时，worker
-  默认按 succeeded 重放；已提交为 canceled/failed 的 partial 又不被当前幂等入口接受。
-- recovery job 没有直接保存长上下文策略。倍率路径可从 `CostBaseModelPriceID` 重建；绝对
-  `channel_prices` 覆盖路径该 pin 为零，重放使用空策略，可能漏算客户售价和 Provider 成本的长上下文倍率。
 - partial token usage 结算后不能被后到权威 usage 修正。
 - token `unknown` 只有重试直至 `dead` 的现有结果，没有可结算降级口径。
-- orphan sweeper 的列表查询与收口事务分离，收口时不重查 recovery job，也不判断 transport 是否仍在执行。
+- 进程崩溃后若 request 与 attempt 都永久停在 `running`，orphan sweeper 会保守保留冻结，当前只能由不变量巡检
+  识别并人工确认；缺少可靠死亡证明时不自动释放可能仍在执行的请求。
 - stranded sweeper 不自动处理 `authorized` 配 `succeeded`；该类行只能靠巡检发现。
 - bill-on-disconnect 成本计算失败当前静默丢失；数据库写入失败由 recorder 记录 `WARN`，caller 忽略错误。
 - 服务端工具次数只支持正数事实；显式零会使整组 settlement facts 失败，三态和独立按次收费均未实现。

@@ -3,7 +3,7 @@ title: 数据生命周期
 description: Gateway 当前 Provider、Channel 与 Route 的状态、归档、恢复、硬删除和引用保护行为。
 status: active
 owner: 网关团队
-last_updated: 2026-08-02
+last_updated: 2026-08-04
 related:
   - ../glossary.md
   - routing-load-balancing.md
@@ -116,8 +116,8 @@ Channel 删除可以清理自身配置和检测日志，但不会为删除方便
 
 ## 代码与测试证据
 
-当前服务、数据库与故障测试覆盖 Provider/Channel 状态不变量、409 前置条件、无级联归档、Provider 地址后缀
-释放与精确恢复、URL 冲突、非终态 operation 阻断、Redis 分层 purge、在途长流收口和历史引用保护。
+当前服务与数据库测试覆盖 Provider/Channel 状态不变量、409 前置条件、无级联归档、Provider 地址后缀
+释放与精确恢复、URL 冲突、非终态 operation 阻断、Redis 分层 purge 和历史引用保护。
 
 ## 相关决策
 
