@@ -70,6 +70,7 @@ revision，Channel 承载账号级配置和凭据；配置可变更、凭据可�
 - Provider、Channel 与 Route 恢复为 disabled，不自动恢复子对象、Route 池或 API Key 绑定。
 - 归档线路前必须迁移其绑定 API Key；归档后的硬删除只适用于已归档且无历史引用的实体。
 - 归档实体的历史请求、账务和经营统计仍按事实保留；自动渠道检测跳过归档 Channel。
+- Provider、Model 和 Route Channel 选择器必须读取服务端分页的全部结果，不得把单页 100 条静默当成全集。
 
 ### 质量需求
 
@@ -106,3 +107,4 @@ Provider→Channel 管理模型、双 revision、凭据围栏、状态限制、�
 - [x] 生命周期 409 引导 Route → Channel → Provider，不静默级联或替换。
 - [x] 归档与恢复保留历史关联，恢复结果为 disabled。
 - [x] 渠道检测结果不污染客户用量、账务或成功率统计。
+- [x] Provider、Model 和 Route Channel 选择器不会因单页大小限制而隐藏后续选项。

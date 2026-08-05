@@ -3,7 +3,7 @@ title: 运营可观测性
 description: 管理后台以客观事实支持运行判断和经营分析的设计。
 status: draft
 owner: 管理后台团队
-last_updated: 2026-08-01
+last_updated: 2026-08-05
 related:
   - ../overview.md
   - ../quality.md
@@ -43,6 +43,9 @@ related:
   主动检测、eligible 错误率与样本、Channel 最近 30 分钟平均上游 TTFT、请求 Gateway TTFT、attempt 上游
   TTFT、流式/非流式总耗时、容量与临时超限、运行态同步、成本/并发容量/TTFT/错误率/Priority 五项分数、
   最终得分和实际分流。
+- Route runtime 必须区分 `eligible`、`probe_only` 和 `excluded`：`probe_only` 只显示“仅探测”，不承担普通流量，
+  不展示或解释普通候选排序总分；`excluded` 的稳定原因使用页面中文映射，数据库预先排除且未执行毛利检查时不伪造
+  一条失败的 margin check。
 - 当前“可服务/不可服务/基础设施故障”只能由当前硬门禁和运行态 readiness 直接推导；基础设施故障必须明确表示准入已拒绝，并与无样本区分。
 - Channel TTFT 评分只使用流式 attempt 从 transport start 到有效生成 Token 的样本，并按最近 30 分钟窗口
   做算术平均；请求级 Gateway TTFT 使用业务建档到对应有效生成 Token 成功写入客户的时间。两者不得互相
@@ -50,9 +53,13 @@ related:
 - 系统设置展示成本、并发容量、TTFT、错误率与 Priority 五项整数百分比，实时显示合计；合计不为 100 时
   禁止保存。Route runtime 同时展示算法版本、五项分数、五项权重、完整计算过程和最终得分；旧 trace 缺字段
   时保留旧视图。
+- Route runtime 对每个 Channel 展示当前筛选模型实际采用的成本来源。绝对成本、模型基准价乘价格倍率与
+  充值倍率、成本未配置三种状态必须区分；倍率事实与本次候选评分来自同一运行快照，首屏不按 Channel
+  追加独立定价请求。
 - 首页为决策层，仅显示 8 项 KPI、本期与上期同长度窗口比较和状态 Banner；不放逐项明细、排行榜或 Token 拆解。
 - 金额按币种拆卡；利润率只在同币种内计算；缓存贡献是反事实估算，必须标为“估算”。
 - 二级分析中心和实时监控页使用独立视图与数据源。实时 QPS、TPS、RPM、TPM、P99 和错误率不得伪装为数据库经营聚合。
+- 模型详情的缓存命中率只计算 `cache_read_tokens / input_tokens`；cache write 作为独立缓存事实展示，不并入命中率。
 
 ### 数据边界
 
@@ -110,5 +117,8 @@ ERROR、WARNING、HTTP 5xx、上游首字超时和结算失败规则；Prometheu
 - [ ] 首页不跨币种相加，缓存贡献标为估算。
 - [ ] 请求 Gateway TTFT 与 attempt/Channel 上游 TTFT 分别标明口径；非流式不展示伪造的 TTFT，stale 版本不展示旧运行态事实。
 - [ ] 五项评分、逐项计算过程、权重合计、最终得分和实际分流可区分；旧 trace 不伪造缺失的新评分字段。
+- [x] Route runtime 展示当前模型的实际成本来源与倍率，线路渠道数增长不会增加首屏独立定价请求数量。
+- [x] Route runtime 区分仅探测与普通候选，排除原因可读且未执行的毛利检查不会额外显示失败。
+- [x] 模型详情缓存命中率只统计 cache read / input。
 - [x] Gateway 日志页可创建有期限 DEBUG、展示逐实例应用状态，并在到期后自动恢复基线。
 - [x] 日志查询由 Admin Server 受控访问 Loki，支持固定范围和筛选，浏览器不直连日志存储。
