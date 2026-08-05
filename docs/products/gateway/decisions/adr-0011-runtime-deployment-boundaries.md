@@ -57,7 +57,7 @@ related:
 10. Admin 只有固定返回的 `/healthz`，另有受 Admin 认证保护的 runtime diagnostics；Worker 与 maintenance CLI
     不提供 HTTP 健康端点。
 11. request admission 的 Store、integrity 或 control 错误发生在 handler 前并映射为 503。`SnapshotMany` 的
-    runtime-sync、pending 或 revision/config stale 在 TPM Reserve、账务授权、attempt 和上游调用前终止请求。
+    runtime-sync、pending 或 revision/config stale 在账务授权、attempt 和上游调用前终止请求。
     Snapshot 后的 candidate Acquire denied 不创建 attempt 或 transport，并可继续后续候选；Go/Store 错误或
     `breaker_store_unavailable` 终止候选执行。已开始 transport 的调用继续按实际 usage、账务、attempt 与审计
     路径收口。

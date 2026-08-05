@@ -3,7 +3,7 @@ title: Gateway Provider 适配
 description: Provider、Origin、Channel、Adapter、协议转换和 usage 归一的当前实现边界。
 status: active
 owner: 网关团队
-last_updated: 2026-08-02
+last_updated: 2026-08-05
 related:
   - ../README.md
   - ../glossary.md
@@ -111,7 +111,7 @@ recovery 与 partial usage。客户公开响应仍恢复客户请求的 Unio 模
 
 OpenAI 原生 Compact 成功时返回上游完整 Response-like JSON。当前 service 构造后固定开启
 原生不支持回落，没有生产 setter 或运行配置入口：同一 Channel 的原生 404/405 会再执行
-一次独立准入的 Synthetic Compact；原生 2xx 若缺少可计费 usage，则不执行 Synthetic 回落，
+一次独立准入的 Synthetic Compact；原生 2xx 若 usage 不完整或数值不可信，则不执行 Synthetic 回落，
 而是记录 cost risk exposure 并失败收口。
 
 ### DeepSeek OpenAI 出站
@@ -167,6 +167,12 @@ OpenAI Chat 与原生 Responses 把输入拆为未缓存、cache read 与 30m ca
 不适用；输出总量包含 reasoning。当前 OpenAI wire DTO 对 cached、cache write 和 reasoning 可选分解使用
 整数零值，因此上游未提供这些可选字段时会成为 `known(0)`，不能区分“未提供”和“已知零”。
 
+OpenAI Chat、原生 Responses 与 Responses Compact 的非流式成功响应必须实际带有完整的输入、输出和
+总 token 字段，且总数与输入加输出一致；字段明确返回数字零是合法用量。usage 不存在、为 null、缺少
+任一必需字段、出现负数或总数不一致时，请求不会交付给客户，也不会继续切换其他渠道。Gateway 不向
+客户扣费，而是释放冻结金额并记录一条上游可能已经产生费用的风险事实。Responses-to-Chat bridge 和
+Compact 的 Synthetic 路径沿用同一规则。
+
 DeepSeek OpenAI 复用上述解析器。当前生产代码没有解析 DeepSeek 专有的
 `prompt_cache_hit_tokens` / `prompt_cache_miss_tokens`；如果上游只返回这两个字段而没有填充
 `prompt_tokens_details.cached_tokens`，对应输入会全部进入未缓存量。
@@ -175,6 +181,10 @@ Anthropic usage 把 `input_tokens` 作为未缓存输入，分别保存 cache re
 thinking 分解；只有 flat cache creation 总量时归入 5m，30m 标为不适用。`server_tool_use` 中的
 web search 与 web fetch 次数会转换为受控附加计量项；显式零当前也会生成 item，但通用 facts 校验只接受
 正数，因此显式零可能使完整 facts 校验失败。
+
+Anthropic 非流式响应只有同时带有 `usage.input_tokens` 和 `usage.output_tokens` 才能进入成功结算；字段
+明确为零是合法用量。usage 不存在、为 null 或缺少其中一个字段时，请求失败且不再切换其他渠道，Gateway
+释放客户冻结金额并记录一条上游可能已经产生费用的风险事实，不会把缺失用量当成 0 元成功。
 
 当前候选要求客户售价与 Channel 成本使用相同币种和相同 pricing unit。币种或计价单位不一致时，
 候选在负毛利保护中 fail closed；运行时没有汇率换算。

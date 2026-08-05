@@ -31,7 +31,7 @@ Router 只从 API Key 绑定 Route 的显式 Channel 池生成同协议、同模
 - Provider breaker、Channel breaker、429 cooldown 和 Channel-Model permission 允许本次调用；
 - PostgreSQL revision、Redis committed control、runtime epoch 和 server identity 一致。
 
-基础池无效或候选无资格都不是评分项。Channel RPM、RPD、TPM 只作为自动聚合的观测指标，不影响基础池、
+基础池无效或候选无资格都不是评分项。Channel RPM、RPD 与 TPM 只作为自动聚合的观测指标，不影响基础池、
 候选资格、评分或 Gateway 主动拦截。上游真实返回 429 时仍写 Channel cooldown。
 
 ## 五项客观评分

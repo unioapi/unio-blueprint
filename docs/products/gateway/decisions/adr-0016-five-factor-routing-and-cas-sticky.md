@@ -36,8 +36,9 @@ related:
    排序；`fixed` Route 不按分数重排。
 2. TTFT 和错误率使用时间窗口内的真实 attempt 样本。TTFT 按算术平均值和可配置单位线性扣分，错误率按
    每 1% 可配置扣分线性惩罚；任一指标无样本时，该指标得 100 分。样本不与 breaker 窗口混用。
-3. Channel RPM、RPD、TPM 只由请求记录聚合为观测事实，不参与候选资格、评分或 Gateway 主动拦截。
-   Route 与 User Account 请求层的 RPM、RPD、TPM 限流继续独立生效。
+3. Channel RPM 与 RPD 只由请求记录聚合为观测事实，不参与候选资格、评分或 Gateway 主动拦截。
+   Route 与 Channel 的 TPM 同样只是观测：它由独立的分钟级观测桶记录，任何维度都不存在 TPM 硬限制。
+   Route 与 User Account 请求层的 RPM、RPD 与并发限流继续独立生效。
 4. Channel 并发容量是 Redis 原子硬门槛。候选只有取得 `AttemptPermit` 后才创建 attempt 和发起 transport；
    并发满时继续扫描其他候选。只有整池候选都仅因并发满而拒绝时，才共享一次有界等待，随后完整重扫一次。
    等待耗尽返回 503 和 `Retry-After: 1`；整池 429 冷却返回 429 和可证明的最短 `Retry-After`，不等待。

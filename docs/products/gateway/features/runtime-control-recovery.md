@@ -91,7 +91,7 @@ Provider 归档遇非终态 operation 返回 conflict，不自动 Abort 或接�
 - Channel config/capacity revision、breaker、cooldown、permission 与并发容量；
 - RouteRate、GlobalConcurrency、CircuitBreaker 和 RoutingBalance 当前 control。
 
-任一关键 control 缺失、pending、payload 非法或 revision stale 会使整批失败，并发生在请求 TPM Reserve、账务
+任一关键 control 缺失、pending、payload 非法或 revision stale 会使整批失败，并发生在账务
 授权和 attempt 创建前。正常业务不可用状态只过滤相应候选。
 
 每个真实 transport 前仍以新 permit ID 执行 Acquire，强读当前 control revision 并再次校验 Provider/Channel

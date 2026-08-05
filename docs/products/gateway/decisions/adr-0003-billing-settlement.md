@@ -3,7 +3,7 @@ title: "ADR-0003：预付授权、结算与恢复的账务边界"
 description: "Gateway 在上游调用前冻结可用余额，按 token_v1 结算，并以补扣、核销、快照和恢复记录账务事实。"
 status: active
 owner: 网关团队
-last_updated: 2026-08-04
+last_updated: 2026-08-05
 related:
   - ../overview.md
   - ../features/access-control.md
@@ -23,13 +23,16 @@ Gateway 在调用上游前通常只有输入估算和输出上限，无法取得
 
 ## 预授权
 
-- 授权使用候选的保守输入估算、客户输出上限、候选模型最大输出上限或进程兜底上限计算金额，并取候选中
-  最大的估算金额作为本次授权上界。
+- 授权使用候选的保守输入估算、客户输出上限、候选模型最大输出上限或进程兜底上限计算金额。模型启用
+  长上下文阶梯时，同一份 token 估算分别按普通价和长上下文价计算并取较高值；再取全部候选中的最高金额
+  作为授权上界。是否真正应用长上下文价格仍由结算时的可靠 usage 判断。
 - `estimated_amount` 必须大于零。可用余额是 `balance - reserved_balance`；可用余额不大于零时拒绝请求，
   不调用上游。
 - 可用余额足以覆盖估算金额时冻结估算金额；可用余额为正但不足时冻结全部剩余可用余额并继续请求。
   因此 `authorized_amount = min(estimated_amount, available_balance)`，且不会形成负余额。
 - 一次请求只建立一条 reservation。Route 内 fallback 复用该授权，不重新冻结余额。
+- 该上界避免仅因本地估算和真实 usage 分处长上下文门槛两侧而少冻结；token 数量本身的估算偏差和部分余额
+  授权仍可能形成 overage 或 `authorization_underfunded` 平台核销。
 - API Key `spend_limit` 在认证时按 `spent_total >= spend_limit` 拒绝。`spent_total` 在结算事务中累加客户
   实际承担的 capture 和 overage debit；并发或在途请求可以使最终累计值超过上限，因此它是软上限。
 
@@ -59,9 +62,16 @@ ledger、API Key `spent_total` 以及 request/attempt 终态。
 当 `actual_amount = 0` 时，settlement 仍保存 usage、价格和成本快照，但释放 reservation，不写零金额 debit，
 也不增加 `spent_total`。
 
+流式请求已取得可靠最终 usage 后发生尾部错误时，仍按真实 usage 完整结算；结算事务必须同时保存交付错误
+终态，而不能写成成功。普通错误的 request/attempt 目标为 `failed`，客户端取消的目标为 `canceled`，两者
+都不再 fallback，delivery 为 `interrupted`。
+
 价格快照保存结算使用的 token 售价向量、公式版本、Route 倍率和长上下文应用标记。成本快照保存成本向量、
 各 token 分项金额、总成本、Provider/Channel、来源 pin/倍率和长上下文应用标记。客户总实扣由一条 capture
 debit 和可选的一条 overage debit 表达，不保存在价格快照中。
+
+Provider 成本的七个金额分项先分别舍入到 10 位小数，总成本再由这些已舍入分项相加，保证成本快照的总额
+与分项严格一致。客户扣款没有对应的七个金额分项，不受这条成本快照规则影响。
 
 ## 流式部分结算
 
@@ -90,10 +100,12 @@ debit 和可选的一条 overage debit 表达，不保存在价格快照中。
   状态不会回滚。
 - partial recovery 按 job 保存的 canceled、failed 或 succeeded 目标收口；已提交终态的再次重放只有在状态、
   错误、usage、`final_usage_received` 和账务事实一致时才按幂等成功返回。
-- 授权清扫与 settlement recovery 按请求状态互斥：孤儿路径处理仍为 `running` 的 `authorized` 冻结（释放并记
-  `risk_exposure`、请求标 `failed`），但必须同时没有 running attempt 和 recovery job；搁浅路径处理已为
-  `failed`/`canceled` 的 `authorized` 冻结（只释放，不写敞口、不改终态）。orphan finalizer 与 recovery job
-  创建通过同一 request 行锁串行化。参数、稳定码与巡检以 [账务与结算](../features/billing-settlement.md) 为准。
+- 授权清扫与 settlement recovery 按请求状态互斥：孤儿路径处理仍为 `running`、delivery 尚未开始的
+  `authorized` 冻结（释放并记 `risk_exposure`、请求标 `failed`）。存在 running attempt 时，必须先用持久化
+  permit ID 确认 permit 已失效；active、Redis 状态不明或旧记录已经开始上游的情况都保守保留。搁浅路径处理
+  已为 `failed`/`canceled` 的 `authorized` 冻结（只释放，不写敞口、不改终态）。attempt 创建、orphan finalizer
+  与 recovery job 创建通过同一 request 行锁串行化。参数、稳定码与巡检以
+  [账务与结算](../features/billing-settlement.md) 为准。
 - 对 bill-on-disconnect Channel，客户取消、timeout、传输失败或部分 5xx 路径可以另记估算 Provider 成本
   敞口。该事实与客户 usage、余额和 ledger 分离，已形成完整或 partial settlement 成本时不重复记录。
 
@@ -101,9 +113,9 @@ debit 和可选的一条 overage debit 表达，不保存在价格快照中。
 
 - token `unknown` 可以进入 recovery job，但 `token_v1` 每次重放仍会拒绝 settlement；事实不变时最终进入
   `dead`，没有可结算降级口径。
-- orphan / stranded 清扫的列表与单条收口不在同一事务；orphan 收口在 request 行锁内重查 recovery job 和
-  running attempt，recovery 创建使用同一行锁。崩溃后永久残留的 running attempt 不自动回收；
-  `authorized` 配 `succeeded` 也不自动回收。细节见功能文档。
+- orphan / stranded 清扫的列表与单条收口不在同一事务；orphan 收口在 request 行锁内重查 delivery、recovery
+  job 和完整 attempt/permit 证明，recovery 与 attempt 创建使用互斥锁。已经开始交付后崩溃的 running
+  request/attempt 不自动回收；`authorized` 配 `succeeded` 也不自动回收。细节见功能文档。
 - `web_search_requests` / `web_fetch_requests` 的 line item 只接受正数；显式零会使 settlement facts 校验失败。
   recovery 又把零与缺失折叠，当前不能表达完整三态，也没有独立按次收费。
 - `price_snapshots.price_id` 当前是可选的 `channel_prices` 成本覆盖行 ID，不是客户售价使用的

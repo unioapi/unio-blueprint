@@ -3,7 +3,7 @@ title: 准入控制
 description: Gateway 当前请求层限流与候选层原子并发、运行门禁和资源收口行为。
 status: active
 owner: 网关团队
-last_updated: 2026-07-31
+last_updated: 2026-08-05
 related:
   - ../glossary.md
   - routing-load-balancing.md
@@ -22,17 +22,17 @@ related:
 候选级 `AttemptPermit`。两层都以 Redis committed runtime control 为执行权威，并在运行态缺失或不同步时
 fail closed。
 
-请求层继续执行 Route/User 的 RPM、RPD、TPM 与并发限制。候选层不再执行 Channel RPM、RPD、TPM 硬门槛；
-它只以 Channel 并发作为容量门槛，并同时检查 Provider/Channel breaker、429 cooldown、模型权限和 revision。
+请求层继续执行 Route/User 的 RPM、RPD 与并发限制。候选层只以 Channel 并发作为容量门槛，
+并同时检查 Provider/Channel breaker、429 cooldown、模型权限和 revision。
+
+两层都没有 TPM 门槛。Unio 不主动限制 token 吞吐：上游容量不足只由真实 429、渠道共享冷却、熔断与
+fallback 表达。Route 与 Channel 的 TPM 只是分钟级观测事实，既没有上限也没有剩余量。
 
 ## 请求层准入
 
 - request token 在 API Key 认证后取得一次，入口 RPM、RPD 与并发在 Acquire 时处理；候选 fallback 不重复
   Acquire。handler 返回后，同一 request session 停止 renewer 并唯一 Finalize。
-- 只有生成或压缩请求在候选输入估算完成后，一次性、幂等 Reserve 请求层 TPM。Reserve 使用可执行候选中最大的
-  `input_estimate`，fallback 不重复 Reserve。Reserve 返回 limited 时不写 TPM 桶，但会把 limited 结果固化在仍
-  active 的 request token；handler 返回前继续持有入口并发，随后仍需 Finalize。已记录的 Route RPM/RPD 不回滚。
-- Route 的 RPM、RPD、TPM 和并发使用 `NULL` / `0` / 正数语义：`NULL` 继承全局默认，`0` 表示不限，正数为
+- Route 的 RPM、RPD 和并发使用 `NULL` / `0` / 正数语义：`NULL` 继承全局默认，`0` 表示不限，正数为
   上限。并发按同一 User Account 在该 Route 上的同时在途请求计数。
 - request-token renew 或 handler 后 Finalize 失败只记录日志和指标，不改写已经形成的公开响应。
 
@@ -43,22 +43,22 @@ fail closed。
 1. 从显式 Route 池形成同协议、同模型候选，完成状态、凭据、Adapter、价格和毛利检查。
 2. 读取一次共享运行态快照，校验 epoch、Provider/Channel revision、breaker、cooldown、permission、Channel
    并发容量与五项评分 control；再读取评分时间窗口样本，形成确定性候选顺序。
-3. 为每个候选按最终上游 wire 计算完整输入估算；以最大 `input_estimate` Reserve 请求层 TPM，再使用与 TPM
-   分离的保守输出估算完成账务授权。
+3. 为每个候选按最终上游 wire 计算完整输入估算，再结合保守输出估算完成账务授权。输入估算不预占任何限额，
+   它只服务于余额冻结、价格计算与 TPM 观测。
 4. 执行器按实际扫描顺序为每个尚未真实尝试的候选申请新的 `AttemptPermit`。
 
-客户显式提供的输出上限由协议校验并原样映射，不参与 Redis TPM 初始占用；客户省略 OpenAI Chat
-Completions、Responses 或 Responses Compact 输出上限时，Gateway 不用固定默认值或模型能力上限补齐，也不向
-上游注入人为上限。账务授权可以使用独立的保守输出估算，但该估算不写入 Redis TPM，也不改变上游请求。
+客户显式提供的输出上限由协议校验并原样映射；客户省略 OpenAI Chat Completions、Responses 或
+Responses Compact 输出上限时，Gateway 不用固定默认值或模型能力上限补齐，也不向上游注入人为上限。
+账务授权可以使用独立的保守输出估算，但它不改变上游请求。
 
-只读快照不创建 permit，也不预占 Channel 并发。Channel RPM、RPD、TPM 不参与候选快照、资格或 Acquire；
-Admin 展示的三项值来自 request attempt 记录的时间窗口聚合。
+只读快照不创建 permit，也不预占 Channel 并发。Channel RPM、RPD 与两侧 TPM 都不参与候选快照、资格或
+Acquire；Admin 展示的 RPM/RPD 来自 request attempt 记录的时间窗口聚合，TPM 来自独立的分钟级观测桶。
 
 ## 候选 `AttemptPermit`
 
 候选 Acquire 在一个 Redis 原子操作中检查：
 
-- request token 仍 active，且请求层 TPM Reserve 不小于当前候选输入估算；
+- request token 仍 active 且未终态；
 - runtime state epoch、Redis server identity、fault latch 与 reconciliation proof；
 - Provider origin/status control、双 revision、pending fence 和 Channel 对 Provider 的身份绑定；
 - Channel config revision、capacity revision 与当前 committed Channel capacity control；
@@ -76,7 +76,7 @@ permit 已 terminal 时返回冲突。正常 fallback 和全池重扫使用新�
 候选 denial 按原因继续扫描，单个 Channel 并发满不会阻止其他 Channel。执行器对本轮 denial 汇总后，仅在
 至少有一个候选且全部候选都只因 `concurrency_full` 被拒绝时等待一次。Sticky 是否命中不参与等待资格。
 
-等待期间继续持有 request token、入口并发、请求层 TPM Reserve 和账务授权，但不持有任何 Channel permit。
+等待期间继续持有 request token、入口并发和账务授权，但不持有任何 Channel permit。
 预算在整池间共享，默认 1 秒，并受客户 deadline 限制；结束后只完整重扫一次。单请求已经发起过真实
 transport 的 Channel 不再尝试，禁止 A → B → A。
 
@@ -99,17 +99,18 @@ transport 的 Channel 不再尝试，禁止 A → B → A。
 - runtime epoch 换代是例外：Manager 在 Redis 调用前拒绝旧 token/permit 的 Finalize、Finish 或 Abort，资源只能
   等待租约 TTL。
 
-Channel 不再拥有 RPM/RPD/TPM 预占、释放或对账资源。请求层 TPM 只在取得可靠 usage 时按
-`actual_total - input_estimate` 对账；没有可靠 usage 时，明确未写出上游请求才释放输入占用，已有交互证据或
-结果不确定时保留输入。本地或 partial usage 不修改 Redis TPM。request Finalize 对最终逻辑请求采用相同规则：
-可靠 usage 将 Route TPM 结算为 `actual_total`；所有候选都确认未写出时释放 Route 输入占用；只要有候选已写出
-或结果不确定且没有可靠 usage，就保留 Route 输入占用。
+permit 只冻结 Channel 并发，不存在 RPM/RPD/TPM 的预占、释放或对账。request Finalize 只释放 route-user
+并发并关闭 token：RPM/RPD 作为「已接收请求」保留，不回滚，也不接收任何 token 用量。
 
-Redis TPM 的可靠 `actual_total` 等于互斥的 uncached input、cache read、各类 cache write 与
-`output_tokens_total` 之和；reasoning 是输出总量的分解项，不重复相加。运行中请求只占用输入，已完成请求占用
-可靠 actual，已触达但无可靠 usage 的请求保留输入，因此 TPM 是软限制：完成后的正差额可以让原分钟桶超过限额，
-后续准入会看到该结果。释放或结算始终修改取得占用时冻结的分钟桶；该桶已自然过期时终态成功且不重建旧桶，
-减量则以零为下限。
+TPM 观测走完全独立的分钟桶（`obs:tpm:v1:route|channel:{id}:min:{minute}`）。请求发出时按输入估算写入
+provisional，流式输出按每个 chunk 的实际观察分钟累加，非流式输出整体归入完整响应到达的分钟。可靠 usage
+到达后，输入差额落在输入原始分钟，实际输出按各分钟已观察到的权重等比分配、最后一个分钟承担整数除法余数，
+因此分钟合计严格等于实际输出。观测口径与账单一致：输入等于互斥的 uncached input、cache read 与各类
+cache write 之和，输出等于 `output_tokens_total`，reasoning 只是输出的分解项，不重复相加。
+
+目标分钟桶已过保留期或超出回溯窗口时放弃该分钟的修正、绝不重建，任何字段都不会变成负数。usage 不可靠时
+保留已观察到的估算并增加 `missing_usage_count`，不用不可靠 usage 修正桶。观测写失败只计指标，不影响交付、
+结算或准入，也不置位共享基础设施故障 latch。
 
 ## Store 故障行为
 
@@ -127,8 +128,7 @@ Redis TPM 的可靠 `actual_total` 等于互斥的 uncached input、cache read�
 | 状态或条件 | 当前结果 |
 | --- | --- |
 | 请求层真实限额命中 | 不创建候选 permit、不调用上游，公开返回 429。 |
-| 请求层 TPM Reserve 命中限额 | TPM 桶不增加且不创建候选 permit；入口已记录的 Route RPM/RPD 不回滚，公开返回 429。 |
-| 运行态快照 runtime-sync/pending/stale | 整批失败；尚未 Reserve 请求 TPM、授权、创建 attempt 或调用上游。 |
+| 运行态快照 runtime-sync/pending/stale | 整批失败；尚未授权、创建 attempt 或调用上游。 |
 | 单候选并发满 | 立即扫描下一候选，不创建 attempt。 |
 | 整池仅因并发满 | 共享一次有界等待后完整重扫；仍满则 503。 |
 | 整池 cooldown | 429，不等待。 |

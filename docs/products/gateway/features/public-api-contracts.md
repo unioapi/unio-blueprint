@@ -70,7 +70,7 @@ Responses-to-Chat 桥接。
 
 所有已注册且受保护的 `/v1` 操作在进入各自 handler 前都会取得 request-admission token，包括
 `GET /v1/models`、`POST /v1/responses/input_tokens` 和当前返回 501 的 Responses 状态操作。因此这些本地或
-未实现操作也可能先返回共享 admission 的 429/503；它们不执行候选快照、请求 TPM Reserve 或上游调用。
+未实现操作也可能先返回共享 admission 的 429/503；它们不执行候选快照或上游调用。
 
 ## 身份、模型与可见性
 

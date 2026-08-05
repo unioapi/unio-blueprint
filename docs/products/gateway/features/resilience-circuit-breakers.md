@@ -54,7 +54,7 @@ level 和 half-open lease。默认 control 使用：
 
 | 已开始 transport 的结果 | Channel | Provider | 其他反馈 |
 | --- | --- | --- | --- |
-| 成功且有有效协议 facts | eligible success | eligible success | 记录错误率分母、流式 TTFT 与 RPM/RPD/TPM 观测 |
+| 成功且有有效协议 facts | eligible success | eligible success | 记录错误率分母、流式 TTFT 与 RPM/RPD 观测 |
 | timeout、HTTP 5xx | eligible failure | 按直接或 evidence 规则 | 无 |
 | 明确协议解码、非法响应或 stream 读取失败 | eligible failure | 通常 ignored | 无 |
 | 401 | ignored | ignored | 连续凭据闸门 |
@@ -102,7 +102,8 @@ Provider/Channel 归档立即清理 breaker、evidence/cooldown、permission 和
 
 `gateway.circuit_breaker.enabled=false` 使 Acquire 不因 open/half-open 拒绝，并使两层 breaker disposition
 返回 `not_applicable`。它不绕过 AttemptPermit、Provider 围栏、integrity、Channel 并发、cooldown、
-permission pause 或 Store fail closed，也不关闭独立的 TTFT、错误率和 RPM/RPD/TPM 观测样本。
+permission pause 或 Store fail closed，也不关闭独立的 TTFT、错误率和 RPM/RPD 观测样本，
+也不关闭分钟级 TPM 观测。
 
 ## 安全与可观测性
 

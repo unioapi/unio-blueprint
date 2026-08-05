@@ -3,7 +3,7 @@ title: "功能设计：网关访问控制"
 description: "记录 API Key、用户账户、Route 与请求身份的当前行为。"
 status: active
 owner: 网关团队
-last_updated: 2026-08-01
+last_updated: 2026-08-05
 related:
   - ../overview.md
   - ../glossary.md
@@ -52,8 +52,14 @@ Gateway 以 API Key 鉴别调用方。有效 API Key 直接解析到 User Accoun
 | 删除 | 有 request history 引用时数据库拒绝删除；没有 request history 时可物理删除。 |
 | 轮换 | 当前没有原子轮换操作；使用创建、状态更新、吊销和受限删除组合处理。 |
 
-Admin API 当前使用单一静态 token。API Key 的创建、更新、停用、重新启用、吊销和删除没有持久化实际操作人
-身份；当前也没有 API Key 明文读取审计记录。
+Admin API 当前使用单一管理员用户名和口令登录。凭据来自部署环境，登录成功后随机签发 Redis 会话 token；
+会话可过期、登出可立即吊销，不再接受静态预共享 token。API Key 的创建、更新、停用、重新启用、吊销和
+删除仍没有持久化实际操作人身份；当前也没有 API Key 明文读取审计记录。
+
+登录入口在 Redis 中共享两层固定时间窗：默认同一来源地址与用户名组合 15 分钟内允许 5 次尝试，同一用户名
+跨来源允许 20 次。超出任一上限后返回 429 和 `Retry-After`，不再比较口令；成功登录清除对应计数。
+Redis 只保存用户名与来源组合的摘要，不保存用户名、来源地址或口令原文。计数存储不可用时登录返回 503，
+不会绕过限制继续签发会话。
 
 ## 请求标识
 
@@ -74,7 +80,8 @@ Admin API 当前使用单一静态 token。API Key 的创建、更新、停用�
 
 当前代码、Schema 和测试覆盖 API Key hash 认证、User Account 与 Route 解析、无效/停用/吊销 Key 拒绝、
 Route 缺失拒绝、余额授权拒绝、业务请求 ID 生成、`trace_id` 分离、request history 删除保护，以及
-prefix、hash 和完整明文的创建与读取路径。
+prefix、hash 和完整明文的创建与读取路径。Admin 登录测试覆盖同来源与跨来源限制、多实例共享、成功清除、
+窗口过期、429 等待时间和 Redis 故障拒绝。
 
 ## 状态说明
 

@@ -87,7 +87,7 @@ Channel 仍在任意 Route 池时，归档返回 conflict；调用方必须先�
 Provider 未归档，结果为 disabled；归档前已经移除的 Route 关系不会自动恢复。
 
 归档立即清理 Channel breaker、cooldown、capacity control、permission 和 recheck queue 成员；在途 permit 与
-并发租约保留至 Finish/Abort 收口或 TTL 回收。Channel RPM/RPD/TPM 是独立观测桶，不是待收口的准入资源。
+并发租约保留至 Finish/Abort 收口或 TTL 回收。Channel RPM/RPD 与 TPM 都是独立观测桶，不是待收口的准入资源。
 
 ## Route
 
