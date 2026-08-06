@@ -3,7 +3,7 @@ title: Gateway（网关）概览
 description: 网关当前公开入口、身份、线路、供给与账务边界。
 status: active
 owner: 网关团队
-last_updated: 2026-07-31
+last_updated: 2026-08-06
 related:
   - README.md
   - glossary.md
@@ -68,7 +68,7 @@ Provider 适配、上游调用、用量记录和结算。
 - OpenAI ingress 只使用 OpenAI protocol Channel；Anthropic ingress 只使用 Anthropic protocol Channel。
 - 模型能力声明不参与真实候选准入；运行时是否可执行由 Adapter registry 的 operation capability 决定。
 - Console、Admin 前端、SDK 与文档站属于其他产品或实现范围。
-- Gateway 代码当前由三个常驻进程和一个 maintenance CLI 复用同一 Go module；具体见
+- Gateway 代码当前由三个常驻进程复用同一 Go module；具体见
   [ADR-0011](decisions/adr-0011-runtime-deployment-boundaries.md)。
 
 ## 参考资料

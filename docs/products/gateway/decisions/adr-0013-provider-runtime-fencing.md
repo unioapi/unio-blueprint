@@ -3,7 +3,7 @@ title: "ADR-0013：Provider 运行态代际围栏"
 description: "以 Provider 的独立 origin/status revision、Channel revision 与整体运行态代际隔离迟到结果。"
 status: active
 owner: 网关团队
-last_updated: 2026-08-04
+last_updated: 2026-08-06
 related:
   - ../features/runtime-control-recovery.md
   - ../features/data-lifecycle.md
@@ -79,8 +79,9 @@ control 继续维护各自 revision，permit 固化本次调用需要的全部�
    permit 与并发租约。归档后迟到的运行反馈为 stale/no-op，但资源必须完成收口。
 9. 启动 Reconciler 先收口 PostgreSQL durable operation，再以 PostgreSQL 当前 Provider/Channel/control 稳定事实
    为权威修复缺失或漂移的 Redis control；Provider 正常 Hash 保留 breaker 状态，只校正双 revision、status、
-   pending 与 fence。运行期周期 Reconciler 仍只补缺失；已存在状态若 revision、pending、payload hash 或业务
-   事实冲突，停止恢复并保持 fail closed。
+   pending 与 fence。Redis 完整重启后需同时重启 Gateway，启动流程重建 marker 与可恢复 control 并自动提交
+   reconciliation proof；临时限流、租约、Sticky、breaker 和 cooldown 不从历史补回。运行期周期 Reconciler
+   仍只补缺失；已存在状态若 revision、pending、payload hash 或业务事实冲突，停止恢复并保持 fail closed。
 10. readiness 核验 Provider routing operation、关键 control、runtime epoch、Redis server identity、完整对账
     proof 与故障锁；普通健康探针不创建或修复运行态。
 
@@ -95,7 +96,8 @@ control 继续维护各自 revision，permit 固化本次调用需要的全部�
 ### 负面影响
 
 - 所有运行态 DTO、trace、检测日志和诊断视图都必须携带 Provider 双 revision。
-- Redis 全量丢失后仍需要受控的 epoch 恢复、完整对账和 post-commit release。
+- Redis 全量丢失会重置限流、租约、Sticky、breaker、cooldown 等临时运行态；恢复依赖 Redis 与 Gateway 重启
+  后的自动重建和完整对账。
 
 ### 中性影响或后续工作
 

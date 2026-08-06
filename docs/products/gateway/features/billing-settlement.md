@@ -3,7 +3,7 @@ title: "功能设计：账务与结算"
 description: "记录预付余额、授权、结算、核销、价格与成本快照的当前行为。"
 status: active
 owner: 网关团队
-last_updated: 2026-08-05
+last_updated: 2026-08-06
 related:
   - ../overview.md
   - ../glossary.md
@@ -68,6 +68,29 @@ API Key `spend_limit` 在认证阶段检查，是允许并发或在途请求结�
 Provider 成本的七个金额分项先分别四舍五入到 10 位小数，`total_cost_amount` 再由这些已经舍入的分项
 相加生成，不从未舍入的原值独立计算。这样成本快照中的总额始终严格等于分项合计。
 
+### Provider 内部成本余额
+
+成本快照生成后，可靠 usage 且成本大于零的请求会在同一结算事务中写入 Provider 不可变账本
+`provider_ledger_entries` 的 `usage_debit`，并扣减对应币种的 `provider_balances`。流水关联请求、最终 attempt、
+成本快照、Channel 和上游模型，同时保存请求编号、Channel 名称和模型快照；同一成本快照和幂等键只能入账一次。
+Provider 余额允许为负，首次消费可以从 0 扣成负数。零成本不写流水；partial stream estimate、usage 不可靠、
+没有成本快照或无法确认上游成本的失败 attempt 不自动扣款。已经得到 partial stream 成本估算，或真实上游调用
+因超时、5xx、传输中断、客户取消、完整 usage 缺失而无法自动扣款时，系统写入独立的 Provider 待对账成本风险；
+明确在生成前拒绝的 400、401、403、404 和 429 不写风险。估算金额只用于人工核对，不改变余额；无法估价的请求
+和真实探测风险保留为“金额未知”。
+
+Channel 模型检测不是客户请求，不创建客户请求记录或客户账单。每次真实检测保存独立、不可变的探测事实；
+上游返回可靠 usage 且成本大于零时，按检测发生时生效的 Channel 成本口径写入 `probe_debit` 并扣减 Provider
+余额。检测已收到 2xx 但没有可靠 usage 时只写待对账成本风险，不用估算值代替真实消费；明确返回 4xx/5xx、超时、
+连接失败或取消的失败检测只保留探测事实，不产生待对账成本风险。
+
+Provider 账本与客户预授权账本分开，余额只用于内部观察、对账和排查，不参与路由、fallback、breaker、Provider
+或 Channel 状态。Admin 手工调额只接受 USD 和最终目标余额，服务端锁定当前余额后计算差额，再写入
+`adjustment_credit` 或 `adjustment_debit`；调额必须带原因和幂等键，不能绕过账本直接更新余额。调额提交时，
+本次调额前同币种的待对账风险会关联该调额流水并标记为已对账。历史成本不回填，结算恢复只重放当前事实，
+不补扣旧请求。Provider 账本写入失败时
+结算事务整体回滚；已向客户交付的内容仍按现有 settlement recovery 处理，不伪造一次已经成功的扣款。
+
 流式请求已经取得可靠最终 usage 后又发生尾部错误时，仍按该真实 usage 完整结算，不改用估算，也不释放
 为免费请求；但 settlement 同时保存交付失败事实。普通尾部错误把 request/attempt 收为 `failed`，客户端
 取消收为 `canceled`，delivery 为 `interrupted`，并且不会继续 fallback 或绑定 Sticky。
@@ -117,7 +140,7 @@ token 事实中的 `unknown` 能进入 recovery job，但 `token_v1` 每次重�
 - metered item 校验与 `usage_line_items` 表约束都要求 quantity 大于零。因此显式零会使 settlement facts
   校验失败，而不是被保存为已知零。
 - 正数 web search/fetch 次数可以写入 `usage_line_items`，但 `token_v1` 不读取这些行，客户收费与
-  Provider 成本金额不变。
+  Provider 成本金额不变；可靠 usage 才会产生 Provider `usage_debit`，partial estimate 不会把估算金额写入 Provider 余额。
 - recovery job 的两个工具次数字段是默认零的非空数值，重建时只恢复正数；缺失、已知零、未知和不适用
   不能在 recovery 路径中区分。
 - partial stream 只保存 token 估算，不携带 server-tool 次数；当前也没有权威 usage 后到收口机制。
@@ -163,10 +186,13 @@ job，并锁定 running attempt，要求 attempt ID 与 permit ID 集合和 work
 - 使用调用前的保守输入估算、模型输出上限和候选成本口径估算平台金额；
 - 不写客户 usage、余额或 ledger；
 - 已形成完整或 partial settlement 成本时不再记录，避免同一 attempt 双计；
-- 记录是 best effort；成本计算失败会被静默放弃，生产 recorder 的数据库写入失败会记录 `WARN`；两者都
-  不改变客户响应。
+- 同一风险同步进入 Provider 待对账视图，但不直接扣减 Provider 余额；普通 Channel 的同类失败也会进入该视图，
+  只是不会写入 `channel_cost_exposures`；
+- 记录是 best effort；成本计算失败时 Provider 风险保留为“金额未知”，但旧 Channel 敞口因字段要求完整而跳过；
+  数据库写入失败记录错误日志，两者都不改变客户响应。
 
-当前成本计算失败不写日志或指标；数据库写入失败只写 `WARN`，caller 忽略该错误。
+Provider 待对账风险按真实 attempt 幂等；同一 attempt 从不同收口路径重复识别时沿用首条风险，不让原因文案差异
+反向导致客户结算失败。
 
 ## 当前边界
 
@@ -175,7 +201,7 @@ job，并锁定 running attempt，要求 attempt ID 与 permit ID 集合和 work
 - 进程崩溃后，orphan sweeper 只自动处理 delivery 尚未开始的请求。已经向客户交付内容后仍停在 `running`
   的 request/attempt 不自动释放或改终态，仍需巡检识别并人工处理。
 - stranded sweeper 不自动处理 `authorized` 配 `succeeded`；该类行只能靠巡检发现。
-- bill-on-disconnect 成本计算失败当前静默丢失；数据库写入失败由 recorder 记录 `WARN`，caller 忽略错误。
+- 待对账风险是 best effort；数据库故障时记录可能失败，但不能反向阻断或改写客户响应。
 - 服务端工具次数只支持正数事实；显式零会使整组 settlement facts 失败，三态和独立按次收费均未实现。
 
 ## 数据、安全与可观测性

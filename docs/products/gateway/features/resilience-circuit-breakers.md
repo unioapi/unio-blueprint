@@ -3,7 +3,7 @@ title: 韧性与熔断器
 description: Gateway 对真实上游故障按 Provider 与 Channel 归因、隔离、恢复和解释的当前行为。
 status: active
 owner: 网关团队
-last_updated: 2026-08-01
+last_updated: 2026-08-06
 related:
   - ../glossary.md
   - admission-control.md
@@ -88,6 +88,11 @@ Channel config revision、两层 breaker generation、half-open 权利、模型�
 - 403 permission pause 固化 Channel、Model、Channel config revision 与 Provider 双 revision，只通过精确复检恢复。
   若客户尚未收到任何帧，且权限暂停写入成功，当前请求继续扫描下一候选；缺少明确 403 metadata 时不切换。
 
+403 不会升级为 Provider 冻结，也不会暂停整个 Channel 账号。当前实现没有可靠方法区分“单模型权限不足”和
+“整个服务商账号失效”，因此不根据 403 猜测扩大影响范围。Provider 内部余额只供 Admin 人工排查，余额高低、
+负余额或未设置都不改变 Provider、Channel、breaker、fallback 或路由状态；后续若要识别账号级 403，必须另行
+提出可靠识别方案并评审。
+
 这些反馈只在 permit Finish 已确认后写入。写入 Store 失败终止普通 fallback，避免在反馈状态未知时继续调用。
 
 ## Reset 与归档
@@ -117,7 +122,7 @@ Redis 当前 key 使用 Provider/Channel 命名空间；不存在旧 Origin key�
 
 当前测试覆盖 eligible/ignored、连续和比例触发、退避、half-open、重复终结、Provider/Channel 独立 reset、
 三类隔离 evidence、429、403、401、双 revision/generation stale、TTFT stream-only 评分样本、404 reset、Store fail
-closed 和多 Gateway 共享状态。
+closed 和多 Gateway 共享状态；403 回归明确只保留精确 Channel-Model 暂停，不产生 Provider 或整个 Channel 账号冻结。
 
 ## 相关决策
 

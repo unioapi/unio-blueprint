@@ -3,7 +3,7 @@ title: 运行控制与恢复
 description: Gateway 的 Provider 双 revision、Channel 控制、运行态代际围栏和故障恢复当前行为。
 status: active
 owner: 网关团队
-last_updated: 2026-08-04
+last_updated: 2026-08-06
 related:
   - ../glossary.md
   - admission-control.md
@@ -28,8 +28,8 @@ Gateway 通过 revision、payload hash、durable operation 和 runtime state epo
 
 | 层次 | 当前权威 | 作用 |
 | --- | --- | --- |
-| 管理事实 | PostgreSQL Provider/Channel/control 行与 durable operation | 保存配置、revision、operation 状态和恢复证据 |
-| 执行事实 | Redis committed control、Provider/Channel state 和资源 key | 多 Gateway 原子 Snapshot、Acquire、Finish 与限额 |
+| 管理事实 | PostgreSQL Provider/Channel/control 行与 durable operation | 保存配置、revision 和 operation 状态 |
+| 执行事实 | Redis committed control、Provider/Channel state 和资源 key | 多 Gateway 原子 Snapshot、Acquire、Finish 与限额；允许在故障重启后丢失并重建可恢复部分 |
 | 完整性身份 | runtime state epoch + revision | 证明整组执行事实属于当前恢复代际 |
 | 故障锁 | Redis infrastructure fault latch + reconciliation proof | Store 故障后阻止仅凭健康探测恢复流量 |
 
@@ -63,7 +63,7 @@ Prepare 或数据库提交前失败可以 Abort；db_committed 后只能恢复 C
 Gateway 与 Admin 的首次启动协调运行在停机重启模型下：先收口 PostgreSQL 中未终结的 durable operation，再以
 PostgreSQL 当前稳定事实为权威，原子重建缺失或漂移的四个关键 app setting 与 Channel capacity control。启动重建
 会覆盖 Redis 中落后、超前、payload 不同或残留 pending 的单个 control，并清除该 control 的 pending 字段；
-不会清除请求层限流桶、并发租约、request token、Sticky、breaker 或其他运行态 key。进程启动后的周期
+不会主动恢复请求层限流桶、并发租约、request token、Sticky、breaker、cooldown 或其他临时运行态。进程启动后的周期
 Reconciler 不使用权威覆盖，仍只补缺失并严格拒绝已有冲突，避免干扰运行中的 Admin 发布。
 
 ## Provider 路由事实发布
@@ -108,12 +108,14 @@ epoch 保存随机身份、单调 revision 和 recovering/ready 状态，reason 
 - 首次 bootstrap 建立 durable operation，经 Redis pending、PostgreSQL db_committed、Redis Commit 后自动 ready。
 - PostgreSQL 已是 ready 且没有未终结 epoch operation 时，Gateway 启动会按 DB 当前 epoch/revision 原子重建
   缺失或不匹配的 Redis marker；不会清除其他 Redis 运行态 key。
-- state loss/restore 只能由 maintenance 命令开始，要求明确确认入口阻断、运行态丢失和合法 recovery 身份。
-- Commit 需要入口阻断、在途排空、等待窗口、breaker/cooldown、permission、control、离线脚本和 maintenance
-  probe 的限时摘要证据；随后进入 awaiting_release。
-- awaiting_release 期间必须完成 Provider、Channel、关键 control 和 durable operation 全量对账，提交绑定
-  Redis server identity 与 reconciliation generation 的 proof，再以 post-commit smoke 证据 Release。
-- Release 后 operation 才 committed，普通 readiness 才可恢复。
+- Redis 完整重启后，必须同时重启 Gateway。启动流程先关闭准入，再按 PostgreSQL 自动重建 marker、Provider、
+  Channel capacity、关键 control 和未终结 durable operation；完整核对成功并提交 reconciliation proof 后自动恢复流量。
+- 不再存在人工 begin/commit/release、恢复证据、维护冒烟或时间窗口。历史遗留的 `awaiting_release` operation
+  若与当前 ready epoch 完整匹配，会在启动时自动标记 committed。
+- 无法连接 Redis、PostgreSQL 与 Redis 身份冲突、重建失败或全量核对未通过时，Gateway 启动失败或 readiness
+  保持关闭，不会部分放流。
+- Redis 中的 RPM/RPD 分钟或日桶、并发租约、request token、Sticky、breaker、cooldown、permission 和观测桶
+  属于可丢弃运行态。完整丢失后不从请求历史补算，也不要求人工恢复；它们从恢复后的新请求重新积累。
 
 ## Readiness 与故障锁
 
@@ -122,7 +124,8 @@ control、无阻断 operation、Redis marker/epoch/control/payload、Provider ro
 reconciliation proof 和 fault latch 全部一致。
 
 Redis/BreakerStore 操作失败会使新准入 fail closed 并留下 fault latch。Redis 恢复连接不足以重新放流；后台
-Reconciler 完整核对 PostgreSQL 与 Redis 后才能清锁。
+Reconciler 只有在 marker 仍有效时才能修复单项缺失。Redis 完整重启时需要重启 Gateway，由启动流程重建
+marker 和可恢复 control，完整核对成功后自动清锁并放流。
 
 ## 凭据失效、轮换与检测
 
@@ -157,7 +160,8 @@ mismatch、Finish disposition 和凭据检测摘要。
 
 当前测试覆盖普通 control、Provider origin/status publisher/reconciler、启动时 DB 权威修复高低 revision、payload
 漂移、pending、错误 key 类型和 ready marker 丢失，周期严格协调不覆盖冲突，以及 state epoch bootstrap、响应
-丢失、maintenance evidence、awaiting release、readiness、401、凭据 CAS、permission recheck 和归档分层 purge。
+丢失、Redis marker 自动重建、旧 `awaiting_release` 自动收口、冲突时 fail closed、readiness、401、凭据 CAS、
+permission recheck 和归档分层 purge。
 
 ## 相关决策
 

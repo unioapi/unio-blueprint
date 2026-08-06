@@ -3,7 +3,7 @@ title: 准入控制
 description: Gateway 当前请求层限流与候选层原子并发、运行门禁和资源收口行为。
 status: active
 owner: 网关团队
-last_updated: 2026-08-05
+last_updated: 2026-08-06
 related:
   - ../glossary.md
   - routing-load-balancing.md
@@ -149,7 +149,8 @@ runtime-sync-required、Store 故障与 permit 终结。
 
 ## 当前边界事实
 
-- Redis 状态丢失后的当日 Route RPD 恢复仍遵循 runtime state maintenance 与 fail-closed 规则。
+- Redis 完整丢失后，当日 Route RPD 等临时计数不从请求历史补算；重启 Gateway 完成自动重建和全量核对前
+  保持 fail closed，恢复流量后从零重新累计。
 - permit Acquire 的同 ID 幂等只覆盖 active 状态；terminal tombstone 上的同 ID 重试会冲突。
 - Renew 指标不能单独证明租约实际延长。
 - integrity epoch 换代会阻断旧 request token 和 permit 的主动终结，资源依赖租约 TTL。
