@@ -3,7 +3,7 @@ title: Gateway（网关）词汇表
 description: 网关当前领域术语及其实现边界。
 status: active
 owner: 网关团队
-last_updated: 2026-08-01
+last_updated: 2026-08-07
 related:
   - README.md
   - overview.md
@@ -32,6 +32,8 @@ related:
 | Candidate（候选）             | Route 内一个 Channel 与其上游模型映射形成的可尝试项。                                                           |
 | Route（线路）                 | API Key 绑定的客户定价与供给边界，保存模式和显式 Channel 池。                                                      |
 | Model（模型）                 | 客户请求的模型标识，关联基准价格与模型能力声明。                                                                     |
+| Channel Model Binding（渠道模型绑定） | Channel 到本地 Model 的路由边，保存真实上游模型名和独立启停状态；新绑定固定停用，当前验证成功后才可人工启用。 |
+| Upstream Model Snapshot（上游模型快照） | 某 Channel 最近一次成功模型列表发现的结果；与客户 `/v1/models`、本地 Model 和运行绑定相互独立。 |
 | Trace ID                  | 一次入口 HTTP 请求采用并回传的 `X-Request-ID`；日志字段为 `trace_id`，从认证前贯穿到响应结束，但不承担数据库或账务身份。               |
 | Request（请求）               | 生成或压缩调用进入持久生命周期后的端到端业务记录。                                                                    |
 | Request ID                | `request_records` 创建成功后使用的 `req_...` 文本业务标识；日志字段为 `request_id`，一个 Trace ID 在正常生成请求中对应一个 Request ID。 |
